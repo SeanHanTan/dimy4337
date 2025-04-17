@@ -1,3 +1,6 @@
+<<<<<<< HEAD
+# Front-end program code
+=======
 import sys
 import secrets
 import time
@@ -51,3 +54,4 @@ for current_time in allowed_time:
     share_secret(ephid(current_time), k, n)
     time.sleep(time_t) 
     
+>>>>>>> 1ddef6776646e2edff865de2939e3c9e1cdf968f
