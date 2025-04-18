@@ -152,24 +152,29 @@ def main():
     expected_time = initial_time + t
     try:
         while True:
-            # Check that our ephemeral 
-            if time.time() >= expected_time:
+            # Check that our current time has passed t seconds
+            # Generate the new EphID, split the shares
+            # Then broadcast it through a new thread 
+            if time.time() > expected_time:
                 ephid = gen_ephid(t)
                 shares = split_secret(ephid, k, n)
                 initial_time = time.time()
                 expected_time = initial_time + t
+                
+                # Start a new thread to broadcast our split shares
+                thread = threading.Thread(target=broadcast_shares, args=(client, shares))
+                thread.start()
+                # broadcast_shares(client, shares)
 
-            thread = threading.Thread(target=broadcast_shares, args=(client, shares))
+            # Receive messages from any broadcasted shares
 
-            # broadcast_shares(client, shares)
-            # time.sleep(t)
+
     except KeyboardInterrupt:
         print("Quitting...")
     
     client.close()
     # except:
     #     print("Unknown Error Encountered, shutting down client")
-    #     if client:
     # 
 
 ################################################################################
