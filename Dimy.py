@@ -78,13 +78,13 @@ def broadcast_shares(sock, share_split):
     for i, share in enumerate(share_split):
         rand_num = secrets.SystemRandom().uniform(0, 1)
         if rand_num < 0.5:
-            print (f"[Share Dropped]: {share.hex()} at the {i+1}th share")
+            print (f"[Share Dropped] Share {i+1}: {share.hex()}")
         else:
             sock.sendto(share, UDP_ADDR)
             print(f"[Broadcasting] Share {i+1}: {share.hex()}")
         # Wait for 3 seconds before sending the next share
         time.sleep(3)
-    print("[Broadcast End] All shares broadcasted successfully.")
+    print("[Broadcast End] All shares have been broadcasted.")
 
 # TODO: For server communications
 def upload_contacts():
@@ -144,36 +144,41 @@ def main():
     print(f"[BROADCASTING] Client is broadcasting through port {UDP_PORT}.")
 
     # Client starts to listen for other broadcasts
-    client.listen()
+    # client.listen()
 
     # First generate the EphId and the Shamir secret shares 
-    ephid = gen_ephid(t)
+    ephid = gen_ephid()
     shares = split_secret(ephid, k, n)
 
     # Set the expected times for EphID generation
     initial_time = time.time()
     expected_time = initial_time + t
+    # Start a new thread to broadcast our split shares
+    broadcast_thread = threading.Thread(target=broadcast_shares, args=(client, shares))
+    # Set the thread as a daemon so that it shuts down when the user wants to stop the program
+    broadcast_thread.daemon = True
+    broadcast_thread.start()
+
     try:
         while True:
             # Check that our current time has passed t seconds
             # Generate the new EphID, split the shares
             # Then broadcast it through a new thread 
             if time.time() > expected_time:
-                ephid = gen_ephid(t)
+                ephid = gen_ephid()
                 shares = split_secret(ephid, k, n)
                 initial_time = time.time()
                 expected_time = initial_time + t
-                
-                # Start a new thread to broadcast our split shares
-                thread = threading.Thread(target=broadcast_shares, args=(client, shares))
-                thread.start()
+                broadcast_thread.start()
                 # broadcast_shares(client, shares)
 
             # Receive messages from any broadcasted shares
 
 
     except KeyboardInterrupt:
-        print("Quitting...")
+        print("[Exit] Attempting to close threads...")
+        # broadcast_thread.join()
+        print("[Shut Down] Client is quitting...")
     
     client.close()
     # except:
