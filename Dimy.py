@@ -58,8 +58,13 @@ def split_secret(secret, k, n):
 
 def broadcast_shares(share_split):
     for i, share in enumerate(share_split):
-        sock.sendto(share, (UDP_IP, UDP_PORT))
-        print(f"Broadcasting share {i+1}: {share.hex()}")
+        rand_num = secrets.SystemRandom().uniform(0, 1)
+        if rand_num < 0.5:
+            print (f"Share Dropped: {share.hex()} at the {i+1}th share")
+            continue
+        else:
+            sock.sendto(share, (UDP_IP, UDP_PORT))
+            print(f"Broadcasting share {i+1}: {share.hex()}")
         time.sleep(3)
     print("All shares broadcasted")
 
