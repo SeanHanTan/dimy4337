@@ -56,7 +56,8 @@ def main():
             print(f"[ACTIVE CONNECTIONS] {threading.activeCount() - 1}.")
     except KeyboardInterrupt:
         print("[Shutting Down] Server is shutting down...")
-        server.close()
+    
+    server.close()
 
 if __name__ == "__main__":
     main()
