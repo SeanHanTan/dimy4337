@@ -76,9 +76,12 @@ def split_secret(secret, k, n):
 # Used inside a new thread
 def broadcast_shares(sock, share_split):
     for i, share in enumerate(share_split):
-        # TODO: Uncomment after done
-        sock.sendto(share, UDP_ADDR)
-        print(f"[Broadcasting] Share {i+1}: {share.hex()}")
+        rand_num = secrets.SystemRandom().uniform(0, 1)
+        if rand_num < 0.5:
+            print (f"[Share Dropped]: {share.hex()} at the {i+1}th share")
+        else:
+            sock.sendto(share, UDP_ADDR)
+            print(f"[Broadcasting] Share {i+1}: {share.hex()}")
         # Wait for 3 seconds before sending the next share
         time.sleep(3)
     print("[Broadcast End] All shares broadcasted successfully.")
