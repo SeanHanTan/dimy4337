@@ -5,7 +5,8 @@ import threading
 IP = socket.gethostbyname(socket.gethostname())
 PORT = 55000
 ADDR = (IP, PORT)
-SIZE = 100
+# Size representing 100KB
+SIZE = 100000
 FORMAT = "utf-8"
 DISCONNECT_MSG = "!DISCONNECTING"
 
@@ -45,15 +46,18 @@ def main():
     server.listen()
     print(f"[LISTENING] Server is listening on {IP}:{PORT}.")
 
-    while True:
-        # Accept a client
-        conn, addr = server.accept()
-        # Create a new thread to handle actions with the newly accepted client
-        thread = threading.Thread(target=handleClient, args=(conn, addr))
-        thread.start()
-        print(f"[ACTIVE CONNECTIONS] {threading.activeCount() - 1}.")
-
-
+    try:
+        while True:
+            # Accept a client
+            conn, addr = server.accept()
+            # Create a new thread to handle actions with the newly accepted client
+            thread = threading.Thread(target=handleClient, args=(conn, addr))
+            thread.start()
+            print(f"[ACTIVE CONNECTIONS] {threading.activeCount() - 1}.")
+    except KeyboardInterrupt:
+        print("[Shutting Down] Server is shutting down...")
+    
+    server.close()
 
 if __name__ == "__main__":
     main()
