@@ -1,5 +1,6 @@
 import json
 import secrets
+import socket
 import threading
 import time
 import uuid
@@ -9,9 +10,20 @@ from hashlib import sha256
 ################################################################################
 ################################### CONSTANTS ##################################
 
-RECV_IP = '0.0.0.0'
+# Server details
+SERVER_IP = socket.gethostbyname(socket.gethostname())
+SERVER_PORT = 55000
+SERVER_ADDR = (SERVER_IP, SERVER_PORT)
+
+# Details for Receiver
+RECV_IP = SERVER_IP
 RECV_PORT = 50001
 RECV_ADDR = (RECV_IP, RECV_PORT)
+
+# Initial Receiver details
+INIT_RECV_IP = SERVER_IP
+INIT_RECV_PORT = 8888
+INIT_RECV_ADDR = (INIT_RECV_IP, INIT_RECV_PORT)
 
 ################################################################################
 ################################# ID GENERATORS ################################
@@ -115,19 +127,30 @@ def combine_large(shares, ssss=False):
 # Broadcasts a random string to check for its port number,
 # Also to ignore future broadcasts from its own
 # Returns its own port number when found
-def check_port(send_sock, recv_sock):
+def check_port(send_sock):
     port = ''
     rnd_msg = str(uuid.uuid4())
 
+    # Create a new port and bind it to a specific port so that we don't
+    # listen to the same UDP broadcasted port, otherwise the program goes into a loop
+    # when another client is broadcasting its shares
+    # TODO: Create new Socket
+    recv_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    recv_sock.bind(('', INIT_RECV_PORT))
+
+    print(INIT_RECV_ADDR)
+
     while not port:
         print(f"[CHECK] Checking what port the client is using...")
-        send_sock.sendto(rnd_msg.encode('utf-8'), RECV_ADDR)
+        send_sock.sendto(rnd_msg.encode('utf-8'), INIT_RECV_ADDR)
         msg, address = recv_sock.recvfrom(len(rnd_msg.encode('utf-8')))
         
         # print(f"[Receving] Captured data: {msg} from address: {address}")
 
         if msg.decode('utf-8') == rnd_msg:
             port = address[1]
+
+    recv_sock.close()
 
     return port
 
@@ -160,11 +183,6 @@ def broadcast_shares(sock, shares, hash):
 # TODO:
 def receive_shares(sock, port):
     data, address = sock.recvfrom(1024)
-
-    # print(f"OWN PORT: {port}")
-    # print(type(port))
-    # print(f"RECEIVED PORT: {address[1]}")
-    # print(type(address[1]))
 
     if address[1] != port:
         print(f"[RECEIVING] Captured data: {data} from address: {address}")

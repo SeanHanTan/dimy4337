@@ -23,8 +23,7 @@ SERVER_ADDR = (SERVER_IP, SERVER_PORT)
 # UDP_ADDR = (UDP_IP, UDP_PORT)
 
 # Details for Receiver
-# RECV_IP = SERVER_IP
-RECV_IP = '0.0.0.0'
+RECV_IP = SERVER_IP
 RECV_PORT = 50001
 RECV_ADDR = (RECV_IP, RECV_PORT)
 
@@ -101,7 +100,7 @@ def main():
     broad_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     print(f"[CLIENT] Broadcasting to port: {recv_sock.getsockname()[1]}.")
 
-    client_port = check_port(broad_sock, recv_sock)
+    client_port = check_port(broad_sock)
     print(f"[CLIENT] Using port: {client_port}")
 
     # First generate the EphId and the Shamir secret shares 
@@ -116,6 +115,10 @@ def main():
     # Set the thread as a daemon so that it shuts down when the user wants to stop the program
     broadcast_thread.daemon = True
     broadcast_thread.start()
+
+    # Receive broadcasted messages from the receiver socket 
+    receiver_thread = threading.Thread(target=receive_shares, args=(recv_sock, client_port))
+    receiver_thread.start()
 
     try:
         while True:
@@ -133,14 +136,13 @@ def main():
                 broadcast_thread.daemon = True
                 broadcast_thread.start()
 
-            # Receive broadcasted messages from the receiver socket 
-            receive_shares(recv_sock, client_port)
+            # receive_shares(recv_sock, client_port)
 
     except KeyboardInterrupt:
         print("[EXIT] Attempting to close threads...")
         # broadcast_thread.join()
         print("[SHUT DOWN] Client is quitting...")
-    
+
     broad_sock.close()
     recv_sock.close()
 
