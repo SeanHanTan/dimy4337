@@ -62,20 +62,17 @@ def check_args():
     if t not in ALLOWED_TIME:
         print("Invalid time input.")
         print("Valid time values: 15,18,21,24,27,30")
-        print("Exiting")
         sys.exit(1)
 
     # Check valid k and n inputs 
     if k < 3 or n < 5 or k > n:
         print("Invalid k and n input.")
         print("Valid values: k >= 3, n >= 5, k < n")
-        print("Exiting")
         sys.exit(1)
 
     # Make sure that t > 3*n
     if t <= 3*n:
         print("Invalid time input: Time has to be larger than 3*n")
-        print("Exiting")
         sys.exit(1)
     
     return t, k, n
@@ -87,8 +84,8 @@ def check_args():
 def main():
     t, k, n = check_args()
 
-    # print(f"[CLIENT {UDP_PORT}] Client starting...")
-        
+    start_time = time.time()
+
     # Enable the UDP socket for receiver
     recv_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     # Reuse port 50001 for listening
@@ -98,26 +95,36 @@ def main():
     # Set the socket to broadcast
     broad_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     broad_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-    print(f"[CLIENT] Broadcasting to port: {recv_sock.getsockname()[1]}.")
+    print(f"{get_elapsed_time(start_time)}s [CLIENT] \
+Broadcasting to port: {recv_sock.getsockname()[1]}.")
 
-    client_port = check_port(broad_sock)
-    print(f"[CLIENT] Using port: {client_port}")
+    client_port = check_port(broad_sock, start_time)
+    print(f"{get_elapsed_time(start_time)}s [CLIENT] Using port: {client_port}")
 
     # First generate the EphId and the Shamir secret shares 
-    ephid, eph_hash = gen_ephid()
-    shares = split_secret(ephid, k, n)
+    ephid, eph_hash = gen_ephid(start_time)
+    shares = split_secret(ephid, k, n, start_time)
 
     # Set the expected times for EphID generation
     initial_time = time.time()
     expected_time = initial_time + t
     # Start a new thread to broadcast our split shares
-    broadcast_thread = threading.Thread(target=broadcast_shares, args=(broad_sock, shares, eph_hash))
-    # Set the thread as a daemon so that it shuts down when the user wants to stop the program
+    broadcast_thread = threading.Thread(target=broadcast_shares, \
+                                        args=(broad_sock, shares, eph_hash, start_time))
+
+    # Set the thread as a daemon so that it shuts down 
+    # when the user wants to stop the program.
+    # We aren't reading or writing to files,
+    # and the daemons are only sending data to other clients.
+    # Other clients will drop EphIDs after a certain time
+    # and if they don't have enough shares.
     broadcast_thread.daemon = True
     broadcast_thread.start()
 
     # Receive broadcasted messages from the receiver socket 
-    receiver_thread = threading.Thread(target=receive_shares, args=(recv_sock, client_port))
+    receiver_thread = threading.Thread(target=receive_shares, \
+                                       args=(start_time, recv_sock, client_port, t, k, n))
+    receiver_thread.daemon = True
     receiver_thread.start()
 
     try:
@@ -126,22 +133,25 @@ def main():
             # Generate the new EphID and split the shares.
             # Then broadcast the shares through a new thread
             if time.time() > expected_time:
-                ephid, eph_hash = gen_ephid()
-                shares = split_secret(ephid, k, n)
+                ephid, eph_hash = gen_ephid(start_time)
+                shares = split_secret(ephid, k, n, start_time)
                 initial_time = time.time()
                 expected_time = initial_time + t
                 # Start a new thread to broadcast our split shares
-                broadcast_thread = threading.Thread(target=broadcast_shares, args=(broad_sock, shares, eph_hash))
-                # Set the thread as a daemon so that it shuts down when the user wants to stop the program
+                broadcast_thread = threading.Thread(target=broadcast_shares, \
+                                                    args=(broad_sock, shares, eph_hash, start_time))
                 broadcast_thread.daemon = True
                 broadcast_thread.start()
 
             # receive_shares(recv_sock, client_port)
 
     except KeyboardInterrupt:
-        print("[EXIT] Attempting to close threads...")
+        print(f"{get_elapsed_time(start_time)}s [EXIT THREADS] \
+Forcefully closing threads...")
         # broadcast_thread.join()
-        print("[SHUT DOWN] Client is quitting...")
+        # receiver_thread.join()
+        print(f"{get_elapsed_time(start_time)}s [SHUT DOWN] \
+Client is quitting...")
 
     broad_sock.close()
     recv_sock.close()

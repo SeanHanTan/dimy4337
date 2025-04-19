@@ -30,7 +30,7 @@ INIT_RECV_ADDR = (INIT_RECV_IP, INIT_RECV_PORT)
 
 # Generates the Ephemeral ID (EphID)
 # and the first 3 bytes of its hash
-def gen_ephid():
+def gen_ephid(start_time):
     g = 5   # Generator
     x_At = secrets.token_bytes(32)
     g_bytes = g.to_bytes(32, byteorder='big')  
@@ -39,7 +39,8 @@ def gen_ephid():
     s = sha256(eph_id)
     hash = s.digest()[:3]
     
-    print(f"[EPHID GENERATION] {eph_id.hex()} with first 3 bytes of hash {hash}")
+    print(f"{get_elapsed_time(start_time)}s [EPHID GENERATED] \
+{eph_id.hex()[:6]}... with first 3 bytes of hash: {hash.hex()}")
 
     return eph_id, hash
 
@@ -55,17 +56,20 @@ def gen_encid():
 # Splits our EphID into `n` shares that can be constructed with
 # `k` amount. This function uses our auxiliary function that
 # has been taken from online
-def split_secret(secret, k, n):
+def split_secret(secret, k, n, start_time):
     if len(secret) != 32:
-        raise ValueError("[ERROR] Secret must be 32 bytes long.")
+        raise ValueError(f"{get_elapsed_time(start_time)}s [ERROR] \
+Secret must be 32 bytes long.")
     
     # Split our 32-byte long secret into `n` amounts 
     shares = split_large(k, n, secret)
 
-    print(f"[SHAMIR SECRET SHARE] {n} shares have been generated with k = {k}.")
+    print(f"{get_elapsed_time(start_time)}s [SHAMIR SECRET SHARE] \
+{n} shares have been generated with k = {k}.")
 
     for i, share in enumerate(shares):
-        print(f"[SHARES GENERATED] Share {share[0]}: {share[1]}")
+        print(f"{get_elapsed_time(start_time)}s [SHARES GENERATED] \
+Share {share[0]}: {share[1].hex()[:6]}...")
 
     return shares
 
@@ -127,65 +131,78 @@ def combine_large(shares, ssss=False):
 # Broadcasts a random string to check for its port number,
 # Also to ignore future broadcasts from its own
 # Returns its own port number when found
-def check_port(send_sock):
+def check_port(send_sock, start_time):
     port = ''
     rnd_msg = str(uuid.uuid4())
 
     # Create a new port and bind it to a specific port so that we don't
     # listen to the same UDP broadcasted port, otherwise the program goes into a loop
     # when another client is broadcasting its shares
-    # TODO: Create new Socket
     recv_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     recv_sock.bind(('', INIT_RECV_PORT))
 
-    print(INIT_RECV_ADDR)
-
     while not port:
-        print(f"[CHECK] Checking what port the client is using...")
+        print(f"{get_elapsed_time(start_time)}s [CHECK] \
+Checking what port the client is using...")
         send_sock.sendto(rnd_msg.encode('utf-8'), INIT_RECV_ADDR)
         msg, address = recv_sock.recvfrom(len(rnd_msg.encode('utf-8')))
-        
-        # print(f"[Receving] Captured data: {msg} from address: {address}")
 
         if msg.decode('utf-8') == rnd_msg:
             port = address[1]
 
+    # Close the socket before exit
     recv_sock.close()
-
     return port
 
 # Broadcast the k out of n shares
 # Used inside a new thread
-def broadcast_shares(sock, shares, hash):
+def broadcast_shares(sock, shares, hash, start_time):
+    sent = 0
+    dropped = 0
     for i, share in enumerate(shares):
         rand_num = secrets.SystemRandom().uniform(0, 1)
-        print(f"[BROADCASTING] Share {share[0]}: {share[1].hex()}")
+        print(f"{get_elapsed_time(start_time)}s [BROADCASTING] \
+Share {share[0]}: {share[1].hex()[:6]}...")
        
         if rand_num < 0.5:
-            print (f"[SHARE DROPPED] Share {i+1}: {share[1].hex()}")
+            print (f"{get_elapsed_time(start_time)}s [SHARE DROPPED] \
+Share {i+1}: {share[1].hex()[:6]}...")
+            dropped += 1
         else:
             # First convert our tuple into a JSON object
             # data = json.dumps({share[0]: share[1].hex()})
-            data = json.dumps([share[0], share[1].hex(), hash.hex()])
+            data = json.dumps({hash.hex():[share[0], share[1].hex()]})
 
             # Convert the JSON object into a bytes buffer
             buff = bytes(data,encoding="utf-8")
-            print(f"[SHARE BROADCASTED] Buffer of share {share[0]}: {buff}")
+            print(f"{get_elapsed_time(start_time)}s [SHARE BROADCASTED] \
+Buffer of share {share[0]}: {buff[:6]}...")
             # print(f"SHARE {i+1}: {buff} at {len(buff)} bytes")
 
             sock.sendto(buff, RECV_ADDR)
+            sent += 1
         if i + 1 < len(shares):
             # Wait for 3 seconds before sending the next share
             time.sleep(3)
-    print("[BROADCAST END] All shares have been broadcasted.\n")
+    print(f"{get_elapsed_time(start_time)}s [BROADCAST END] \
+All shares have been broadcasted.")
+    print(f"{get_elapsed_time(start_time)}s [BROADCAST SUMARRY] \
+{sent} shares sent, {dropped} shares dropped.")
 
 # Receives the broadcasted shares from one client and reconstructs the EphID
 # TODO:
-def receive_shares(sock, port):
-    data, address = sock.recvfrom(1024)
+def receive_shares(start_time, sock, port, t, k, n):
 
-    if address[1] != port:
-        print(f"[RECEIVING] Captured data: {data} from address: {address}")
+    while True:
+        data, address = sock.recvfrom(1024)
+
+        if address[1] != port:
+            print(f"{get_elapsed_time(start_time)}s [RECEIVING] Captured data: \
+{data[:6]}... from address: {address}")
+
+
+    # except KeyboardInterrupt:
+    #     print(f"{get_elapsed_time(start_time)}s [END RECEIVER] Receiver is closing down")
 
     return
 
@@ -200,3 +217,7 @@ def upload_contacts():
     return
 
 ################################################################################
+################################# MISCELLANEOUS ################################
+
+def get_elapsed_time(start_time):
+    return f"{(time.time() - start_time):.2f}"
