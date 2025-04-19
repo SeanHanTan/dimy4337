@@ -1,6 +1,8 @@
 import json
-import time
 import secrets
+import threading
+import time
+import uuid
 from Crypto.Protocol.SecretSharing import Shamir
 from hashlib import sha256
 
@@ -25,7 +27,7 @@ def gen_ephid():
     s = sha256(eph_id)
     hash = s.digest()[:3]
     
-    print(f"[EphID Generation] {eph_id.hex()} with first 3 bytes of hash {hash}")
+    print(f"[EPHID GENERATION] {eph_id.hex()} with first 3 bytes of hash {hash}")
 
     return eph_id, hash
 
@@ -43,15 +45,15 @@ def gen_encid():
 # has been taken from online
 def split_secret(secret, k, n):
     if len(secret) != 32:
-        raise ValueError("[Error] Secret must be 32 bytes long.")
+        raise ValueError("[ERROR] Secret must be 32 bytes long.")
     
     # Split our 32-byte long secret into `n` amounts 
     shares = split_large(k, n, secret)
 
-    print(f"[Shamir Secret Shares] {n} shares have been generated with k = {k}.")
+    print(f"[SHAMIR SECRET SHARE] {n} shares have been generated with k = {k}.")
 
-    for i in range(len(shares)):
-        print(f"[Shares Generated] Share {i+1}: {shares[i]}")
+    for i, share in enumerate(shares):
+        print(f"[SHARES GENERATED] Share {share[0]}: {share[1]}")
 
     return shares
 
@@ -110,15 +112,34 @@ def combine_large(shares, ssss=False):
 ################################################################################
 ############################# UDP AND TCP FUNCTIONS ############################
 
+# Broadcasts a random string to check for its port number,
+# Also to ignore future broadcasts from its own
+# Returns its own port number when found
+def check_port(send_sock, recv_sock):
+    port = ''
+    rnd_msg = str(uuid.uuid4())
+
+    while not port:
+        print(f"[CHECK] Checking what port the client is using...")
+        send_sock.sendto(rnd_msg.encode('utf-8'), RECV_ADDR)
+        msg, address = recv_sock.recvfrom(len(rnd_msg.encode('utf-8')))
+        
+        # print(f"[Receving] Captured data: {msg} from address: {address}")
+
+        if msg.decode('utf-8') == rnd_msg:
+            port = address[1]
+
+    return port
+
 # Broadcast the k out of n shares
 # Used inside a new thread
 def broadcast_shares(sock, shares, hash):
     for i, share in enumerate(shares):
         rand_num = secrets.SystemRandom().uniform(0, 1)
-        print(f"[Broadcasting] Share {share[0]}: {share[1].hex()}")
+        print(f"[BROADCASTING] Share {share[0]}: {share[1].hex()}")
        
         if rand_num < 0.5:
-            print (f"[Share Dropped] Share {i+1}: {share[1].hex()}")
+            print (f"[SHARE DROPPED] Share {i+1}: {share[1].hex()}")
         else:
             # First convert our tuple into a JSON object
             # data = json.dumps({share[0]: share[1].hex()})
@@ -126,18 +147,28 @@ def broadcast_shares(sock, shares, hash):
 
             # Convert the JSON object into a bytes buffer
             buff = bytes(data,encoding="utf-8")
-            print(f"[Share Broadcasted] Buffer of share {share[0]}: {buff}")
+            print(f"[SHARE BROADCASTED] Buffer of share {share[0]}: {buff}")
             # print(f"SHARE {i+1}: {buff} at {len(buff)} bytes")
 
             sock.sendto(buff, RECV_ADDR)
         if i + 1 < len(shares):
             # Wait for 3 seconds before sending the next share
             time.sleep(3)
-    print("[Broadcast End] All shares have been broadcasted.\n")
+    print("[BROADCAST END] All shares have been broadcasted.\n")
 
 # Receives the broadcasted shares from one client and reconstructs the EphID
 # TODO:
-def receive_shares(sock):
+def receive_shares(sock, port):
+    data, address = sock.recvfrom(1024)
+
+    # print(f"OWN PORT: {port}")
+    # print(type(port))
+    # print(f"RECEIVED PORT: {address[1]}")
+    # print(type(address[1]))
+
+    if address[1] != port:
+        print(f"[RECEIVING] Captured data: {data} from address: {address}")
+
     return
 
 # TODO: For server communications

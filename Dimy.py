@@ -44,11 +44,11 @@ encids_dict = {}
 dbf_dict = {}
 
 ################################################################################
+############################### Program Argument ###############################
 
-##################################### MAIN #####################################
-
-# Main function that deals with general client functionality
-def main():
+# Check the validity of sys args
+# Returns `t`, `k` & `n`, the values for time, minimum shares and `n` amount of shares
+def check_args():
     # Check for valid input
     try:
         t = int(sys.argv[1])
@@ -78,6 +78,15 @@ def main():
         print("Invalid time input: Time has to be larger than 3*n")
         print("Exiting")
         sys.exit(1)
+    
+    return t, k, n
+
+################################################################################
+##################################### MAIN #####################################
+
+# Main function that deals with general client functionality
+def main():
+    t, k, n = check_args()
 
     # print(f"[CLIENT {UDP_PORT}] Client starting...")
         
@@ -90,13 +99,13 @@ def main():
     # Set the socket to broadcast
     broad_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     broad_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-    print(f"[Client] Broadcasting through port {recv_sock.getsockname()[0]}.")
+    print(f"[CLIENT] Broadcasting to port: {recv_sock.getsockname()[1]}.")
 
-    # Client starts to listen for other broadcasts
-    # client.listen()
+    client_port = check_port(broad_sock, recv_sock)
+    print(f"[CLIENT] Using port: {client_port}")
 
     # First generate the EphId and the Shamir secret shares 
-    ephid. eph_hash = gen_ephid()
+    ephid, eph_hash = gen_ephid()
     shares = split_secret(ephid, k, n)
 
     # Set the expected times for EphID generation
@@ -125,12 +134,12 @@ def main():
                 broadcast_thread.start()
 
             # Receive broadcasted messages from the receiver socket 
-            # receive_shares(recv_sock)
+            receive_shares(recv_sock, client_port)
 
     except KeyboardInterrupt:
-        print("[Exit] Attempting to close threads...")
+        print("[EXIT] Attempting to close threads...")
         # broadcast_thread.join()
-        print("[Shut Down] Client is quitting...")
+        print("[SHUT DOWN] Client is quitting...")
     
     broad_sock.close()
     recv_sock.close()
