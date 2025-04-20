@@ -145,10 +145,10 @@ def check_port(send_sock, start_time):
         print(f"{get_elapsed_time(start_time)}s [CHECK] \
 Checking what port the client is using...")
         send_sock.sendto(rnd_msg.encode('utf-8'), INIT_RECV_ADDR)
-        msg, address = recv_sock.recvfrom(len(rnd_msg.encode('utf-8')))
+        msg, addr = recv_sock.recvfrom(len(rnd_msg.encode('utf-8')))
 
         if msg.decode('utf-8') == rnd_msg:
-            port = address[1]
+            port = addr[1]
 
     # Close the socket before exit
     recv_sock.close()
@@ -189,17 +189,41 @@ All shares have been broadcasted.")
     print(f"{get_elapsed_time(start_time)}s [BROADCAST SUMARRY] \
 {sent} shares sent, {dropped} shares dropped.")
 
-# Receives the broadcasted shares from one client and reconstructs the EphID
+# Receives the broadcasted shares from one client
+# Stores the shares into a dictionary
 # TODO:
-def receive_shares(start_time, sock, port, t, k, n):
+def receive_shares(start_time, sock, port, ephids_dict, dict_lock):
 
     while True:
-        data, address = sock.recvfrom(1024)
+        data, addr = sock.recvfrom(1024)
 
-        if address[1] != port:
+        if addr[1] != port:
             print(f"{get_elapsed_time(start_time)}s [RECEIVING] Captured data: \
-{data[:6]}... from address: {address}")
+{data[:6]}... from address: {addr}")
 
+            # Extract the data we received and convert it to appropriate data types
+            received = json.loads(data)
+            # Collect the advertised hash
+            eph_hash = list(received.keys())[0]
+
+            # Process our share details
+            recv_list = list(received.values())[0]
+
+            # Turn the index and share into a tuple
+            share_tuple = (recv_list[0], bytes.fromhex(recv_list[1]))
+
+            # Lock the thread so that it we can include the received share in the dictionary
+            with dict_lock:
+                # First check if the port exists
+                # so that we can create a new dictionary entry
+                if addr[1] not in ephids_dict:
+                    ephids_dict[addr[1]] = {
+                        'hash'   : eph_hash,
+                        'shares' : [share_tuple]
+                    }
+                else:
+                    ephids_dict[addr[1]]['shares'].append(share_tuple)
+                    
 
     # except KeyboardInterrupt:
     #     print(f"{get_elapsed_time(start_time)}s [END RECEIVER] Receiver is closing down")

@@ -34,13 +34,20 @@ ALLOWED_TIME = [15, 18, 21, 24, 27, 30]
 ################################################################################
 
 # Holds a dictionary of collected EphIDs
+# Structure should look like
+# {
+#   <port_number>: {
+#       <hash>: [(index,share)], 
+#   }
+# }
 ephids_dict = {}
 
 # Holds a dictionary of EncIDs
 encids_dict = {}
 
 # Holds the past 21 dbfs
-dbf_dict = {}
+# Length should always be 21
+dbf_dict = []
 
 ################################################################################
 ############################### Program Argument ###############################
@@ -123,7 +130,7 @@ Broadcasting to port: {recv_sock.getsockname()[1]}.")
 
     # Receive broadcasted messages from the receiver socket 
     receiver_thread = threading.Thread(target=receive_shares, \
-                                       args=(start_time, recv_sock, client_port, t, k, n))
+                    args=(start_time, recv_sock, client_port, ephids_dict, dict_lock))
     receiver_thread.daemon = True
     receiver_thread.start()
 
