@@ -33,8 +33,11 @@ INIT_RECV_ADDR = (INIT_RECV_IP, INIT_RECV_PORT)
 # Generates the Ephemeral ID (EphID)
 # and the first 3 bytes of its hash
 def gen_ephid(start_time):
-    ephid = X25519PrivateKey.generate()
-    ephid_pub=ephid.public.key().public_bytes(
+    ephid     = X25519PrivateKey.generate()
+
+    print(f"PRIVATE KEY: {ephid}")
+
+    ephid_pub = ephid.public.key().public_bytes(
         encoding=serialization.Encoding.Raw,
         format=serialization.PublicFormat.Raw
     )
@@ -166,28 +169,34 @@ Checking what port the client is using...")
 
 # Broadcast the k out of n shares
 # Used inside a new thread
-def broadcast_shares(sock, shares, hash, start_time):
+def broadcast_shares(start_time, sock, shares, hash, shut_down):
     sent = 0
     dropped = 0
-    for i, share in enumerate(shares):
+
+    i = 0
+
+    while not shut_down.is_set() and i < len(shares):
+
+    # for i, share in enumerate(shares):
         rand_num = secrets.SystemRandom().uniform(0, 1)
         print(f"{get_elapsed_time(start_time)}s [BROADCASTING] \
-Share {share[0]}: {share[1].hex()[:6]}...")
+Share {shares[i][0]}: {shares[i][1].hex()[:6]}...")
+# Share {share[0]}: {share[1].hex()[:6]}...")
        
         if rand_num < 0.5:
             print (f"{get_elapsed_time(start_time)}s [SHARE DROPPED] \
-Share {i+1}: {share[1].hex()[:6]}...")
+Share {i+1}: {shares[i][1].hex()[:6]}...")
+# Share {i+1}: {share[1].hex()[:6]}...")
             dropped += 1
         else:
-            # First convert our tuple into a JSON object
-            # data = json.dumps({share[0]: share[1].hex()})
-            data = json.dumps({hash.hex():[share[0], share[1].hex()]})
+            # First convert our hash:tuple object into a JSON object
+            # data = json.dumps({hash.hex():[share[0], share[1].hex()]})
+            data = json.dumps({hash.hex():[shares[i][0], shares[i][1].hex()]})
 
             # Convert the JSON object into a bytes buffer
             buff = bytes(data,encoding="utf-8")
             print(f"{get_elapsed_time(start_time)}s [SHARE BROADCASTED] \
-Buffer of share {share[0]}: {buff[:6]}...")
-            # print(f"SHARE {i+1}: {buff} at {len(buff)} bytes")
+Buffer of share {shares[i][0]}: {buff[:6]}...")
 
             sock.sendto(buff, RECV_ADDR)
             sent += 1
@@ -202,9 +211,9 @@ All shares have been broadcasted.")
 # Receives the broadcasted shares from one client
 # Stores the shares into a dictionary
 # TODO:
-def receive_shares(start_time, sock, port, ephids_dict, dict_lock):
+def receive_shares(start_time, sock, port, ephids_dict, dict_lock, shut_down):
 
-    while True:
+    while not shut_down.is_set():
         data, addr = sock.recvfrom(1024)
 
         if addr[1] != port:
@@ -233,9 +242,6 @@ def receive_shares(start_time, sock, port, ephids_dict, dict_lock):
                     }
                 else:
                     ephids_dict[addr[1]]['shares'].append(share_tuple)
-
-    # except KeyboardInterrupt:
-    #     print(f"{get_elapsed_time(start_time)}s [END RECEIVER] Receiver is closing down")
 
     return
 

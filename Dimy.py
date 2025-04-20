@@ -37,7 +37,7 @@ ALLOWED_TIME = [15, 18, 21, 24, 27, 30]
 # Structure should look like
 # {
 #   <port_number>: {
-#       <hash>: [(index,share)], 
+#       <hash>: [(index,share)] 
 #   }
 # }
 ephids_dict = {}
@@ -91,7 +91,10 @@ def check_args():
 def main():
     t, k, n = check_args()
 
+    # Determines when the thread will shutdown
     start_time = time.time()
+
+    shut_down = threading.Event()
 
     # Enable the UDP socket for receiver
     recv_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -117,20 +120,20 @@ Broadcasting to port: {recv_sock.getsockname()[1]}.")
     expected_time = initial_time + t
     # Start a new thread to broadcast our split shares
     broadcast_thread = threading.Thread(target=broadcast_shares, \
-                                        args=(broad_sock, shares, eph_hash, start_time))
+                        args=(start_time, broad_sock, shares, eph_hash, shut_down)).start()
 
-    # Set the thread as a daemon so that it shuts down 
-    # when the user wants to stop the program.
-    # We aren't reading or writing to files,
-    # and the daemons are only sending data to other clients.
-    # Other clients will drop EphIDs after a certain time
-    # and if they don't have enough shares.
-    broadcast_thread.daemon = True
-    broadcast_thread.start()
+    # # Set the thread as a daemon so that it shuts down 
+    # # when the user wants to stop the program.
+    # # We aren't reading or writing to files,
+    # # and the daemons are only sending data to other clients.
+    # # Other clients will drop EphIDs after a certain time
+    # # and if they don't have enough shares.
+    # broadcast_thread.daemon = True
+    # broadcast_thread.start()
 
     # Receive broadcasted messages from the receiver socket 
     receiver_thread = threading.Thread(target=receive_shares, \
-                    args=(start_time, recv_sock, client_port, ephids_dict, dict_lock))
+                    args=(start_time, recv_sock, client_port, ephids_dict, dict_lock, shut_down))
     receiver_thread.daemon = True
     receiver_thread.start()
 
@@ -154,9 +157,10 @@ Broadcasting to port: {recv_sock.getsockname()[1]}.")
 
     except KeyboardInterrupt:
         print(f"{get_elapsed_time(start_time)}s [EXIT THREADS] \
-Forcefully closing threads...")
-        # broadcast_thread.join()
-        # receiver_thread.join()
+Attempting to close threads...")
+        shut_down.set()
+        broadcast_thread.join()
+        receiver_thread.join()
         print(f"{get_elapsed_time(start_time)}s [SHUT DOWN] \
 Client is quitting...")
 
