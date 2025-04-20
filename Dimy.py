@@ -1,83 +1,153 @@
-import sys
-import secrets
+#################################### IMPORTS ###################################
+# Front-end program code
+
+import threading
 import time
-from Crypto.Protocol.SecretSharing import Shamir
 import socket
+import sys
+from auxiliary import *
 
-UDP_IP = '127.0.0.1'
-UDP_PORT = 5005
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+################################################################################
+################################### CONSTANTS ##################################
 
-allowed_time = [15, 18, 21, 24, 27, 30]
-time_t = int(sys.argv[1])
-k = int(sys.argv[2])
-n = int(sys.argv[3])
+# Server details
+SERVER_IP = socket.gethostbyname(socket.gethostname())
+SERVER_PORT = 55000
+SERVER_ADDR = (SERVER_IP, SERVER_PORT)
 
-if k < 3 or n < 5 or k > n:
-    print("Invalid values for k and n... Exiting")
-    sys.exit()
+# UDP port to send infromation.
+# Our Clients and Server will both be running on the same machine,
+# So the IP will be the same
+# UDP_IP = SERVER_IP
+# UDP_PORT = 5001
+# UDP_ADDR = (UDP_IP, UDP_PORT)
 
-if time_t not in allowed_time:
-    print("Invalid time... Exiting")
-    sys.exit()
+# Details for Receiver
+RECV_IP = SERVER_IP
+RECV_PORT = 50001
+RECV_ADDR = (RECV_IP, RECV_PORT)
 
-g = 5  # generator
+# List of allowed times that `t` can take
+ALLOWED_TIME = [15, 18, 21, 24, 27, 30]
 
-def gen_ephid(current_time):
-    if current_time not in allowed_time:
-        print("Invalid time... Exiting")
-        sys.exit()
-    x_At = secrets.token_bytes(32)
-    g_bytes = g.to_bytes(32, byteorder='big')  
-    eph_id = bytes(a ^ b for a, b in zip(x_At, g_bytes))
-    print("eph_id:", eph_id.hex())
-    return eph_id
+################################## DATA STORES #################################
+################################################################################
 
-def split_secret(secret, k, n):
-    if len(secret) != 32:
-        raise ValueError("Secret must be 32 bytes long.")
+# Holds a dictionary of collected EphIDs
+ephids_dict = {}
+
+# Holds a dictionary of EncIDs
+encids_dict = {}
+
+# Holds the past 21 dbfs
+dbf_dict = {}
+
+################################################################################
+############################### Program Argument ###############################
+
+# Check the validity of sys args
+# Returns `t`, `k` & `n`, the values for time, minimum shares and `n` amount of shares
+def check_args():
+    # Check for valid input
+    try:
+        t = int(sys.argv[1])
+        k = int(sys.argv[2])
+        n = int(sys.argv[3])
+    except:
+        print("Invalid number of inputs")
+        print(f"Usage: {sys.argv[0]} t k n")
+        sys.exit(1)
+
+    # Check valid t input
+    if t not in ALLOWED_TIME:
+        print("Invalid time input.")
+        print("Valid time values: 15,18,21,24,27,30")
+        print("Exiting")
+        sys.exit(1)
+
+    # Check valid k and n inputs 
+    if k < 3 or n < 5 or k > n:
+        print("Invalid k and n input.")
+        print("Valid values: k >= 3, n >= 5, k < n")
+        print("Exiting")
+        sys.exit(1)
+
+    # Make sure that t > 3*n
+    if t <= 3*n:
+        print("Invalid time input: Time has to be larger than 3*n")
+        print("Exiting")
+        sys.exit(1)
     
-    half1 = secret[:16]
-    half2 = secret[16:]
-    
-    int1 = int.from_bytes(half1, byteorder='big')
-    int2 = int.from_bytes(half2, byteorder='big')
-    
-    shares1 = Shamir.split(k, n, int1)  # List of (index, share) tuples
-    shares2 = Shamir.split(k, n, int2)  # List of (index, share) tuples
-    
-    print(f"\nGenerated {n} shares for each half:")
-    for i, ((idx1, s1), (idx2, s2)) in enumerate(zip(shares1, shares2)):
-        print(f"Share {i+1} (Half1): {s1.hex()}")
-        print(f"Share {i+1} (Half2): {s2.hex()}")
-    
-    # Extract just the shares (drop the indices)
-    combined_shares = [s1 for (idx, s1) in shares1] + [s2 for (idx, s2) in shares2]
-    return combined_shares
+    return t, k, n
 
-def broadcast_shares(share_split):
-    for i, share in enumerate(share_split):
-        rand_num = secrets.SystemRandom().uniform(0, 1)
-        if rand_num < 0.5:
-            print (f"Share Dropped: {share.hex()} at the {i+1}th share")
-            continue
-        else:
-            sock.sendto(share, (UDP_IP, UDP_PORT))
-            print(f"Broadcasting share {i+1}: {share.hex()}")
-        time.sleep(3)
-    print("All shares broadcasted")
+################################################################################
+##################################### MAIN #####################################
 
+# Main function that deals with general client functionality
 def main():
+    t, k, n = check_args()
+
+    # print(f"[CLIENT {UDP_PORT}] Client starting...")
+        
+    # Enable the UDP socket for receiver
+    recv_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # Reuse port 50001 for listening
+    recv_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+
+    recv_sock.bind(('', RECV_PORT))
+    # Set the socket to broadcast
+    broad_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    broad_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    print(f"[CLIENT] Broadcasting to port: {recv_sock.getsockname()[1]}.")
+
+    client_port = check_port(broad_sock)
+    print(f"[CLIENT] Using port: {client_port}")
+
+    # First generate the EphId and the Shamir secret shares 
+    ephid, eph_hash = gen_ephid()
+    shares = split_secret(ephid, k, n)
+
+    # Set the expected times for EphID generation
+    initial_time = time.time()
+    expected_time = initial_time + t
+    # Start a new thread to broadcast our split shares
+    broadcast_thread = threading.Thread(target=broadcast_shares, args=(broad_sock, shares, eph_hash))
+    # Set the thread as a daemon so that it shuts down when the user wants to stop the program
+    broadcast_thread.daemon = True
+    broadcast_thread.start()
+
+    # Receive broadcasted messages from the receiver socket 
+    receiver_thread = threading.Thread(target=receive_shares, args=(recv_sock, client_port))
+    receiver_thread.start()
+
     try:
         while True:
-            ephid = gen_ephid(time_t)
-            shares = split_secret(ephid, k, n)
-            broadcast_shares(shares)
-            time.sleep(time_t)
+            # Check that our current time has passed t seconds
+            # Generate the new EphID and split the shares.
+            # Then broadcast the shares through a new thread
+            if time.time() > expected_time:
+                ephid, eph_hash = gen_ephid()
+                shares = split_secret(ephid, k, n)
+                initial_time = time.time()
+                expected_time = initial_time + t
+                # Start a new thread to broadcast our split shares
+                broadcast_thread = threading.Thread(target=broadcast_shares, args=(broad_sock, shares, eph_hash))
+                # Set the thread as a daemon so that it shuts down when the user wants to stop the program
+                broadcast_thread.daemon = True
+                broadcast_thread.start()
+
+            # receive_shares(recv_sock, client_port)
+
     except KeyboardInterrupt:
-        print("Quitting...")
-        sock.close()
+        print("[EXIT] Attempting to close threads...")
+        # broadcast_thread.join()
+        print("[SHUT DOWN] Client is quitting...")
+
+    broad_sock.close()
+    recv_sock.close()
+
+################################################################################
+#################################### START #####################################
 
 if __name__ == "__main__":
     main()

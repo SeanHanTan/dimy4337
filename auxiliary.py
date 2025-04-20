@@ -1,12 +1,15 @@
 import json
 import secrets
 import socket
+import threading
 import time
 import uuid
 from Crypto.Protocol.SecretSharing import Shamir
 from hashlib import sha256
+
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from cryptography.hazmat.primitives import serialization
+
 ################################################################################
 ################################### CONSTANTS ##################################
 
@@ -31,6 +34,7 @@ INIT_RECV_ADDR = (INIT_RECV_IP, INIT_RECV_PORT)
 # Generates the Ephemeral ID (EphID)
 # and the first 3 bytes of its hash
 def gen_ephid():
+
     ephid=X25519PrivateKey.generate().public.key().public_bytes(
         encoding=serialization.Encoding.Raw,
         format=serialization.PublicFormat.Raw
@@ -42,6 +46,7 @@ def gen_ephid():
     print(f"[EPHID GENERATION] First 3 bytes of hash: {hash_prefix.hex()}")
     
     return ephid, hash_prefix
+
 
 # Generates the Encounter ID (EncID) using the reconstructed EphID
 # Applied through Diffie-Hellman key exchange
@@ -182,6 +187,7 @@ def broadcast_shares(sock, shares, hash):
 # Receives the broadcasted shares from one client and reconstructs the EphID
 # TODO:
 '''def receive_shares(sock, port):
+
     data, address = sock.recvfrom(1024)
 
     if address[1] != port:
@@ -199,4 +205,6 @@ def upload_contacts():
     # print(f"[ACTIVE CONNECTIONS] {threading.activeCount() - 1}.")
     return
 
+
 ################################################################################'''
+
