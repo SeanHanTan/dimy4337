@@ -6,6 +6,8 @@ import time
 import uuid
 from Crypto.Protocol.SecretSharing import Shamir
 from hashlib import sha256
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+from cryptography.hazmat.primitives import serialization
 
 ################################################################################
 ################################### CONSTANTS ##################################
@@ -31,18 +33,26 @@ INIT_RECV_ADDR = (INIT_RECV_IP, INIT_RECV_PORT)
 # Generates the Ephemeral ID (EphID)
 # and the first 3 bytes of its hash
 def gen_ephid(start_time):
-    g = 5   # Generator
-    x_At = secrets.token_bytes(32)
-    g_bytes = g.to_bytes(32, byteorder='big')  
-    eph_id = bytes(a ^ b for a, b in zip(x_At, g_bytes))
+    ephid = X25519PrivateKey.generate()
+    ephid_pub=ephid.public.key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw
+    )
 
-    s = sha256(eph_id)
-    hash = s.digest()[:3]
-    
+    hash_digest = sha256(ephid_pub).digest()
+    hash_prefix = hash_digest[:3]
+
     print(f"{get_elapsed_time(start_time)}s [EPHID GENERATED] \
-{eph_id.hex()[:6]}... with first 3 bytes of hash: {hash.hex()}")
+{ephid_pub.hex()[:6]}...")
+    print(f"{get_elapsed_time(start_time)}s [EPHID HASH GENERATED] \
+First 3 bytes of hash: {hash.hex()}")
 
-    return eph_id, hash
+    # print(f"[EPHID GENERATION] X25519 Public Key (EphID): {ephid}")
+    # print(f"[EPHID GENERATION] First 3 bytes of hash: {hash_prefix.hex()}")
+    
+    # return eph_id, hash
+    return ephid_pub, hash_prefix
+
 
 # Generates the Encounter ID (EncID) using the reconstructed EphID
 # Applied through Diffie-Hellman key exchange
@@ -223,7 +233,6 @@ def receive_shares(start_time, sock, port, ephids_dict, dict_lock):
                     }
                 else:
                     ephids_dict[addr[1]]['shares'].append(share_tuple)
-                    
 
     # except KeyboardInterrupt:
     #     print(f"{get_elapsed_time(start_time)}s [END RECEIVER] Receiver is closing down")
