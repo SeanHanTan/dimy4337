@@ -86,7 +86,15 @@ def create_dbf():
     return [0] * 102400
 
 # Deletes the DBF that is older than Dt = (t * 6 * 6) / 60 min 
-def delete_oldest_dbf(start_time, dbf_dict):
+def delete_oldest_dbf(start_time, dbf_list, dbf_lock, t):
+    curr_time = time.time() - start_time
+    # First check if there are seven DBFs, then delete the oldest
+    
+
+    # Then go through the list and delete the DBF that is past `Dt`
+    with dbf_lock:
+        for i, dbf_tup in enumerate(dbf_list):
+            if curr_time > dbf_tup[0] 
     return
 
 ################################################################################

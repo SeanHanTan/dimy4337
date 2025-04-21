@@ -177,15 +177,16 @@ Broadcasting to port: {recv_sock.getsockname()[1]}.")
                 expected_time = initial_time + t
                 # Start a new thread to broadcast our split shares
                 broadcast_thread = threading.Thread(target=broadcast_shares, \
-                                    args=(start_time, broad_sock, shares, eph_hash, shut_down))
+                        args=(start_time, broad_sock, shares, eph_hash, shut_down))
                 # broadcast_thread.daemon = True
                 broadcast_thread.start()
 
             # Check our accumulated shares
-            process_shares(start_time, ephid, ephids_dict, dbf_list, eph_dict_lock, dbf_list_lock, k, t)
+            process_shares(start_time, ephid, ephids_dict, dbf_list, \
+                           eph_dict_lock, dbf_list_lock, k, t)
 
-            # Check available EncIDs and construct DBFs out of them
-            # process_encids(start_time, encids_dict, enc_dict_lock)
+            # Check our stored DBFs and delete the oldest one
+            delete_oldest_dbf(start_time, dbf_list, dbf_list_lock, t)
 
     except KeyboardInterrupt:
         print(f"{get_elapsed_time(start_time)}s [EXIT THREADS] \
