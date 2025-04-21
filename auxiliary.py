@@ -80,6 +80,7 @@ def insert_into_dbf(encid, dbf):
         dbf[hash_val] = 1
     return
 
+
 # Creates a Bloom filter  of size 100KB
 # 100 * 1024 bytes
 def create_dbf():
@@ -89,6 +90,7 @@ def create_dbf():
 def delete_oldest_dbf(start_time, dbf_list, dbf_lock, t):
     deleted = 0
     curr_time = time.time() - start_time
+    oldest = curr_time
     # First check if there are seven DBFs, then delete the oldest
     with dbf_lock:
         if len(dbf_list) >= 7:
@@ -103,9 +105,6 @@ def delete_oldest_dbf(start_time, dbf_list, dbf_lock, t):
             dbf_list.pop(idx_of_tuple)
             deleted += 1
 
-        if not oldest:
-            oldest = curr_time
-
         # Then go through the list and delete the DBF that is past `Dt`
         for i, dbf_tup in enumerate(dbf_list):
             if curr_time > dbf_tup[0] + ((t * 6 * 6) / 60):
@@ -119,6 +118,14 @@ def delete_oldest_dbf(start_time, dbf_list, dbf_lock, t):
 Total of {deleted} DBFs were deleted, the oldest having been created at: {oldest}s.")
 
     return
+
+def dbf_union(dbf1, dbf2):
+
+    return 
+
+def create_cbf(dbf_list, dbf_lock):
+    cbf = dbf_union()
+    return cbf
 
 ################################################################################
 ############################ CRYPTOGRAPHIC FUNCTIONS ###########################

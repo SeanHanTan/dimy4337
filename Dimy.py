@@ -83,8 +83,15 @@ def check_args():
         n = int(sys.argv[3])
     except:
         print("Invalid number of inputs")
-        print(f"Usage: {sys.argv[0]} t k n")
+        print(f"Usage: {sys.argv[0]} t k n (optional true for sickness)")
         sys.exit(1)
+
+    try:
+        sick = sys.argv[4]
+        if sick.lower() == 'true':
+            sick = True
+    except:
+        sick = False
 
     # Check valid t input
     if t not in ALLOWED_TIME:
@@ -103,14 +110,14 @@ def check_args():
         print("Invalid time input: Time has to be larger than 3*n")
         sys.exit(1)
     
-    return t, k, n
+    return t, k, n, sick
 
 ################################################################################
 ##################################### MAIN #####################################
 
 # Main function that deals with general client functionality
 def main():
-    t, k, n = check_args()
+    t, k, n, sick = check_args()
 
     # Determines when the thread will shutdown
     start_time = time.time()
@@ -187,6 +194,13 @@ Broadcasting to port: {recv_sock.getsockname()[1]}.")
 
             # Check our stored DBFs and delete the oldest one
             delete_oldest_dbf(start_time, dbf_list, dbf_list_lock, t)
+            
+            # This is hard coded so that the client will only send the CBF after at least 3 DBFs
+            # have been created to show that all the DBFs were combined.
+            if sick:
+                print(f"{get_elapsed_time(start_time)}s \
+            ")
+                create_cbf(start_time, dbf_list, dbf_list_lock)
 
     except KeyboardInterrupt:
         print(f"{get_elapsed_time(start_time)}s [EXIT THREADS] \
