@@ -76,10 +76,9 @@ def hash_ephid(ephid):
 def insert_into_dbf(encid, dbf):
     for i in range(3):
         # Generates a hash value for the element and sets the corresponding bit to 1
-        hash_val = mmh3.hash(encid, i) % 100000
+        hash_val = mmh3.hash(encid, i) % 102400
         dbf[hash_val] = 1
     return
-
 
 # Creates a Bloom filter  of size 100KB
 # 100 * 1024 bytes
@@ -114,17 +113,27 @@ def delete_oldest_dbf(start_time, dbf_list, dbf_lock, t):
                     oldest = dbf_tup[0]
                 
                 deleted += 1
-        print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
+        if oldest != curr_time:
+            print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
 Total of {deleted} DBFs were deleted, the oldest having been created at: {oldest}s.")
 
     return
 
+"""
+Given two DBFs in byte format, get the union of both
+"""
 def dbf_union(dbf1, dbf2):
+    return dbf1 | dbf2
 
-    return 
-
+"""
+    Parent stack is assumed to have been called under a lock
+"""
 def create_cbf(dbf_list, dbf_lock):
-    cbf = dbf_union()
+    # Create an empty dbf as bytes
+    cbf = (int(''.join(map(str, create_dbf())), 2) << 1).to_bytes(102400, 'big')
+
+    for i, tuple in enumerate(dbf_list):
+        cbf = dbf_union(cbf, (int(''.join(map(str, tuple[1])), 2) << 1).to_bytes(102400, 'big'))
     return cbf
 
 ################################################################################
@@ -443,8 +452,6 @@ Reconstructed Hash: {rec_hash.hex()}, Advertised Hash: {ephid_hash.hex()}")
                     process_encid(start_time, encid, dbf_list, dbf_lock, t)
                     
     return
-
-# def process_encids
 
 ################################################################################
 ################################# MISCELLANEOUS ################################

@@ -119,6 +119,9 @@ def check_args():
 def main():
     t, k, n, sick = check_args()
 
+    # Set a flag to check if CBF was sent
+    cbf_sent = False    
+
     # Determines when the thread will shutdown
     start_time = time.time()
 
@@ -195,12 +198,18 @@ Broadcasting to port: {recv_sock.getsockname()[1]}.")
             # Check our stored DBFs and delete the oldest one
             delete_oldest_dbf(start_time, dbf_list, dbf_list_lock, t)
             
-            # This is hard coded so that the client will only send the CBF after at least 3 DBFs
+            # This is hard coded so that the client will only send the CBF after at least 4 DBFs
             # have been created to show that all the DBFs were combined.
-            if sick:
-                print(f"{get_elapsed_time(start_time)}s \
-            ")
-                create_cbf(start_time, dbf_list, dbf_list_lock)
+            with dbf_list_lock:
+                if sick and len(dbf_list) >= 4 and not cbf_sent:
+                    cbf = create_cbf(start_time, dbf_list, dbf_list_lock)
+                    print(f"{get_elapsed_time(start_time)}s CBF Created \
+out of {len(dbf_list)} DBFs")
+                    # TODO: Create entrypoint to server and send CBF
+
+            if not cbf_sent:
+                # TODO: Create QBF and send to Server
+                pass
 
     except KeyboardInterrupt:
         print(f"{get_elapsed_time(start_time)}s [EXIT THREADS] \
