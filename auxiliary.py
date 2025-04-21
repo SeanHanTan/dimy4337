@@ -325,6 +325,8 @@ Reconstructed Hash: {rec_hash.hex()}, Advertised Hash: {ephid_hash.hex()}")
 {encid.hex()[:6]}...")
     return
 
+def process_encids
+
 ################################################################################
 ################################# MISCELLANEOUS ################################
 

@@ -51,9 +51,10 @@ ephids_dict = {}
 # }
 encids_dict = {}
 
-# Holds the past 21 dbfs
-# Length should always be 21
-dbf_dict = []
+# Holds the past 6 dbfs
+# Length should always be 6
+# Time in seconds
+dbf_dict = {}
 
 ################################################################################
 ############################### Program Argument ###############################
@@ -164,6 +165,9 @@ Broadcasting to port: {recv_sock.getsockname()[1]}.")
 
             # Check our accumulated shares
             process_shares(start_time, ephid, ephids_dict, encids_dict, eph_dict_lock, enc_dict_lock, k)
+
+            # Check available EncIDs and construct DBFs out of them
+            process_encids(start_time, encids_dict, enc_dict_lock)
 
     except KeyboardInterrupt:
         print(f"{get_elapsed_time(start_time)}s [EXIT THREADS] \
