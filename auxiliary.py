@@ -286,6 +286,7 @@ def receive_shares(start_time, sock, port, ephids_dict, dict_lock):
                         ephids_dict[addr[1]]['shares'] = [share_tuple]
                 print(f"{get_elapsed_time(start_time)}s [RECEIVING {addr[1]}] \
 Share {share_tuple[0]}: {share_tuple[1].hex()[:6]}...")
+                # print(f"        DICTIONARY NOW {ephids_dict}")
 
 # TODO: For server communications
 def upload_contacts():
@@ -305,8 +306,9 @@ def upload_contacts():
 """
 def process_encid(start_time, encid, dbf_list, dbf_lock, t):
     
-    # creation_time + t*6
-    curr_time = time.time()
+    # Check current time against creation_time + t*6
+    # Set the time to signify the number of seconds passed the start of the program
+    curr_time = time.time() - start_time
 
     # Base case, nothing in our list
     # Create a dbf and store it inside the list
@@ -321,9 +323,9 @@ New Bloom Filter generated.")
 # EncID: {encid.hex()[:6]} encoded into DBF with binary form: \
 # {bin(int(''.join(map(str, dbf)), 2) << 1)}.")
         print(f"{get_elapsed_time(start_time)}s [SEGMENT 6] \
-EncounterID used is now forgotten.")
+EncounterID {encid.hex()[:3]}... used is now forgotten.")
         with dbf_lock:
-            dbf_list = [(curr_time, dbf)]
+            dbf_list.append((curr_time, dbf))
         return
 
     # Check the most recent creation_time in the list
@@ -338,21 +340,24 @@ EncounterID used is now forgotten.")
             # Then modify the dbf and replace it in the list
             dbf = dbf_list[idx_of_tuple][1]
             insert_into_dbf(encid, dbf)
+            print(f"{get_elapsed_time(start_time)}s [SEGMENT 6] \
+EncounterID {encid.hex()[:3]}... used is now forgotten.")
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-A] \
-EncID encoded into DBF last created at {latest}sec.")
-            print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-A] \
-DBF in binary form now looks like: {bin(int(''.join(map(str, dbf)), 2) << 1)}")
+The DBF last created at {latest}sec has been modified as the EncID: {encid.hex()[:3]}... is now encoded in it.")
             dbf_list[idx_of_tuple] = (latest, dbf)
 
         # Second case - Current time is past the expected time of t*6 seconds
-        else:
+        elif curr_time > latest + (t*6):
             dbf = create_dbf()
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
 New Bloom Filter generated since previous time was created {curr_time - latest}s ago.")
             insert_into_dbf(encid, dbf)
+            print(f"{get_elapsed_time(start_time)}s [SEGMENT 6] \
+EncounterID {encid.hex()[:3]}... used is now forgotten.")
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
-EncID: {encid.hex()[:6]} encoded into DBF.")
+EncID: {encid.hex()[:6]} encoded into the new DBF.")
             dbf_list.append((curr_time, dbf))
+        
     return
 
 # Looks through all shares and then attempts to reconstruct them
@@ -383,21 +388,22 @@ def process_shares(start_time, priv_key, ephids_dict, dbf_list, eph_dict_lock, d
 Reconstructed EphID hash is not the same as advertised: {rec_hash.hex()} != {ephid_hash.hex()}.")
                     continue
 
-                # Check if the EphID has been stored before
-                if 'reconstructed' not in ephids_dict[port]:
+                # Check if a reconstructed EphID was stored before, or if 
+                if 'reconstructed' not in ephids_dict[port] or ephids_dict[port]['reconstructed'] != rec_ephid:
                     print(f"{get_elapsed_time(start_time)}s [RECONSTRUCTING EPHID] \
 {rec_ephid.hex()[:6]}...")
                     print(f"{get_elapsed_time(start_time)}s [VERIFYING EPHID] \
 Reconstructed Hash: {rec_hash.hex()}, Advertised Hash: {ephid_hash.hex()}")
                     
                     ephids_dict[port]['reconstructed'] = rec_ephid
-
-                # Generate the EncID based on the EphID we received    
-                encid = gen_encid(priv_key, rec_ephid)
-                print(f"{get_elapsed_time(start_time)}s [ENCID DERIVED] \
+                    
+                    # Generate the EncID based on the EphID we received    
+                    encid = gen_encid(priv_key, rec_ephid)
+                    print(f"{get_elapsed_time(start_time)}s [ENCID DERIVED] \
 {encid.hex()[:6]}...")
 
-                process_encid(start_time, encid, dbf_list, dbf_lock, t)
+                    process_encid(start_time, encid, dbf_list, dbf_lock, t)
+                    
     return
 
 # def process_encids
