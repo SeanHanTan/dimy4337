@@ -83,8 +83,15 @@ def check_args():
         n = int(sys.argv[3])
     except:
         print("Invalid number of inputs")
-        print(f"Usage: {sys.argv[0]} t k n")
+        print(f"Usage: {sys.argv[0]} t k n (optional true for sickness)")
         sys.exit(1)
+
+    try:
+        sick = sys.argv[4]
+        if sick.lower() == 'true':
+            sick = True
+    except:
+        sick = False
 
     # Check valid t input
     if t not in ALLOWED_TIME:
@@ -103,14 +110,17 @@ def check_args():
         print("Invalid time input: Time has to be larger than 3*n")
         sys.exit(1)
     
-    return t, k, n
+    return t, k, n, sick
 
 ################################################################################
 ##################################### MAIN #####################################
 
 # Main function that deals with general client functionality
 def main():
-    t, k, n = check_args()
+    t, k, n, sick = check_args()
+
+    # Set a flag to check if CBF was sent
+    cbf_sent = False    
 
     # Determines when the thread will shutdown
     start_time = time.time()
@@ -177,15 +187,29 @@ Broadcasting to port: {recv_sock.getsockname()[1]}.")
                 expected_time = initial_time + t
                 # Start a new thread to broadcast our split shares
                 broadcast_thread = threading.Thread(target=broadcast_shares, \
-                                    args=(start_time, broad_sock, shares, eph_hash, shut_down))
+                        args=(start_time, broad_sock, shares, eph_hash, shut_down))
                 # broadcast_thread.daemon = True
                 broadcast_thread.start()
 
             # Check our accumulated shares
-            process_shares(start_time, ephid, ephids_dict, dbf_list, eph_dict_lock, dbf_list_lock, k, t)
+            process_shares(start_time, ephid, ephids_dict, dbf_list, \
+                           eph_dict_lock, dbf_list_lock, k, t)
 
-            # Check available EncIDs and construct DBFs out of them
-            # process_encids(start_time, encids_dict, enc_dict_lock)
+            # Check our stored DBFs and delete the oldest one
+            delete_oldest_dbf(start_time, dbf_list, dbf_list_lock, t)
+            
+            # This is hard coded so that the client will only send the CBF after at least 4 DBFs
+            # have been created to show that all the DBFs were combined.
+            with dbf_list_lock:
+                if sick and len(dbf_list) >= 4 and not cbf_sent:
+                    cbf = create_cbf(start_time, dbf_list, dbf_list_lock)
+                    print(f"{get_elapsed_time(start_time)}s CBF Created \
+out of {len(dbf_list)} DBFs")
+                    # TODO: Create entrypoint to server and send CBF
+
+            if not cbf_sent:
+                # TODO: Create QBF and send to Server
+                pass
 
     except KeyboardInterrupt:
         print(f"{get_elapsed_time(start_time)}s [EXIT THREADS] \
