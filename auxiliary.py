@@ -1,4 +1,5 @@
 import json
+import mmh3
 import secrets
 import socket
 import threading
@@ -31,9 +32,10 @@ INIT_RECV_ADDR = (INIT_RECV_IP, INIT_RECV_PORT)
 
 ################################################################################
 ################################## ID RELATED ##################################
-
-# Generates the Ephemeral ID (EphID)
-# and the first 3 bytes of its hash
+"""
+    Generates the Ephemeral ID (EphID)
+    and the first 3 bytes of its hash
+"""
 def gen_ephid(start_time):
     ephid     = x25519.X25519PrivateKey.generate()
     ephid_pub = ephid.public_key().public_bytes_raw()
@@ -45,9 +47,10 @@ def gen_ephid(start_time):
 First 3 bytes of hash: {hash_prefix.hex()}")
 
     return ephid, ephid_pub, hash_prefix
-
-# Given our private key and a peer EphID,
-# Generate an Encounter ID (EncID) applied through Diffie-Hellman key exchange
+"""
+    Given our private key and a peer EphID,
+    Generate an Encounter ID (EncID) applied through Diffie-Hellman key exchange
+"""
 def gen_encid(priv_key, ephid):
     # First convert the EphID into an 'X25519PublicKey' object
     loaded_public_key = x25519.X25519PublicKey.from_public_bytes(ephid)
@@ -66,11 +69,33 @@ def hash_ephid(ephid):
     return hash_prefix
 
 ################################################################################
-############################ CRYPTOGRAPHIC FUNCTIONS ###########################
+################################# BLOOM FILTERS ################################
 
-# Splits our EphID into `n` shares that can be constructed with
-# `k` amount. This function uses our auxiliary function that
-# has been taken from online
+# Encodes an encid into a dbf
+# Returns the dbf
+def insert_into_dbf(encid, dbf):
+    for i in range(3):
+        # Generates a hash value for the element and sets the corresponding bit to 1
+        hash_val = mmh3.hash(encid, i) % 100000
+        dbf[hash_val] = 1
+    return
+
+# Creates a Bloom filter  of size 100KB
+# 100 * 1024 bytes
+def create_dbf():
+    return [0] * 102400
+
+# Deletes the DBF that is older than Dt = (t * 6 * 6) / 60 min 
+def delete_oldest_dbf(start_time, dbf_dict):
+    return
+
+################################################################################
+############################ CRYPTOGRAPHIC FUNCTIONS ###########################
+"""
+    Splits our EphID into `n` shares that can be constructed with
+    `k` amount. This function uses our auxiliary function that
+    has been taken from online
+"""
 def split_secret(secret, k, n, start_time):
     if len(secret) != 32:
         raise ValueError(f"{get_elapsed_time(start_time)}s [ERROR] \
@@ -89,17 +114,17 @@ Share {share[0]}: {share[1].hex()[:6]}...")
     return shares
 
 ################################################################################
-######################### Shamir Secret Sharing Scheme #########################
+######################### SHAMIR SECRET SHARING SCHEME #########################
 
 SHAMIR_BLOCK_SIZE = 16
 
-##
-#   This code has been taken from https://github.com/Legrandin/pycryptodome/pull/593
-#   It implements the Shamir Secret Sharing scheme from PyCryptodome and supports
-#   secret sizes of over 16 bytes.
-#   The modules were approved in 2022 but is not found in the current Crypto
-#   library
-##
+"""
+    This code has been taken from https://github.com/Legrandin/pycryptodome/pull/593
+    It implements the Shamir Secret Sharing scheme from PyCryptodome and supports
+    secret sizes of over 16 bytes.
+    The modules were approved in 2022 but were not found in the current Crypto
+    library
+"""
 @staticmethod
 def split_large(k, n, secret, ssss=False):
     """
@@ -142,17 +167,19 @@ def combine_large(shares, ssss=False):
 
 ################################################################################
 ############################# UDP AND TCP FUNCTIONS ############################
-
-# Broadcasts a random string to check for its port number,
-# Also to ignore future broadcasts from its own
-# Returns its own port number when found
+"""
+    Broadcasts a random string to check for its port number,
+    Also to ignore future broadcasts from its own
+    Returns its own port number when found
+"""
 def check_port(send_sock, start_time):
     port = ''
     rnd_msg = str(uuid.uuid4())
-
-    # Create a new port and bind it to a specific port so that we don't
-    # listen to the same UDP broadcasted port, otherwise the program goes into a loop
-    # when another client is broadcasting its shares
+    """
+    Create a new port and bind it to a specific port so that we don't
+    listen to the same UDP broadcasted port, otherwise the program goes into a loop
+    when another client is broadcasting its shares
+    """
     recv_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     recv_sock.bind(('', INIT_RECV_PORT))
 
@@ -168,9 +195,9 @@ Checking what port the client is using...")
     # Close the socket before exit
     recv_sock.close()
     return port
-
-# Broadcast the k out of n shares
-# Used inside a new thread
+"""
+    Broadcast the k out of n shares. Used inside a new thread
+"""
 def broadcast_shares(start_time, sock, shares, hash, shut_down):
     sent = 0
     dropped = 0
@@ -272,9 +299,64 @@ def upload_contacts():
 
 ################################################################################
 #################################### CHECKS ####################################
+"""
+    The function will take an encid and determine wether to create a new DBF or 
+    insert into an older one. Returns the latest creation time of the DBF
+"""
+def process_encid(start_time, encid, dbf_list, dbf_lock, t):
+    
+    # creation_time + t*6
+    curr_time = time.time()
+
+    # Base case, nothing in our list
+    # Create a dbf and store it inside the list
+    # Put the creation date as the first element in the tuple,
+    # then the BF as the second element
+    if not dbf_list:
+        dbf = create_dbf()
+        print(f"{get_elapsed_time(start_time)}s [SEGMENT 6] \
+New Bloom Filter generated.")
+        insert_into_dbf(encid, dbf)
+#         print(f"{get_elapsed_time(start_time)}s [SEGMENT 6] \
+# EncID: {encid.hex()[:6]} encoded into DBF with binary form: \
+# {bin(int(''.join(map(str, dbf)), 2) << 1)}.")
+        print(f"{get_elapsed_time(start_time)}s [SEGMENT 6] \
+EncounterID used is now forgotten.")
+        with dbf_lock:
+            dbf_list = [(curr_time, dbf)]
+        return
+
+    # Check the most recent creation_time in the list
+    with dbf_lock:
+        latest = max([t[0] for t in dbf_list])
+        # First case - Current time is within t*6 seconds of the creation time
+        if curr_time <= latest + (t*6):
+            # Take the tuple from the list and replace it
+            # First get the index
+            idx_of_tuple = [y[0] for y in dbf_list].index(latest)
+
+            # Then modify the dbf and replace it in the list
+            dbf = dbf_list[idx_of_tuple][1]
+            insert_into_dbf(encid, dbf)
+            print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-A] \
+EncID encoded into DBF last created at {latest}sec.")
+            print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-A] \
+DBF in binary form now looks like: {bin(int(''.join(map(str, dbf)), 2) << 1)}")
+            dbf_list[idx_of_tuple] = (latest, dbf)
+
+        # Second case - Current time is past the expected time of t*6 seconds
+        else:
+            dbf = create_dbf()
+            print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
+New Bloom Filter generated since previous time was created {curr_time - latest}s ago.")
+            insert_into_dbf(encid, dbf)
+            print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
+EncID: {encid.hex()[:6]} encoded into DBF.")
+            dbf_list.append((curr_time, dbf))
+    return
 
 # Looks through all shares and then attempts to reconstruct them
-def process_shares(start_time, priv_key, ephids_dict, encids_dict, eph_dict_lock, enc_dict_lock, k):
+def process_shares(start_time, priv_key, ephids_dict, dbf_list, eph_dict_lock, dbf_lock, k, t):
     # Go through our ephid dictionary.
     # Check that there are at least k shares.
     # Reconstruct the EphID, then hash it
@@ -312,20 +394,13 @@ Reconstructed Hash: {rec_hash.hex()}, Advertised Hash: {ephid_hash.hex()}")
 
                 # Generate the EncID based on the EphID we received    
                 encid = gen_encid(priv_key, rec_ephid)
-                with enc_dict_lock:
-                    # Check that there is no entry for
-                    # the EncID
-                    # OR
-                    # Check that the EncID is not the same as previous,
-                    # Otherwise replace it with the new one
-                    if port not in encids_dict or encids_dict[port] != encid: 
-                        
-                        encids_dict[port] = encid
-                        print(f"{get_elapsed_time(start_time)}s [ENCID DERIVED] \
+                print(f"{get_elapsed_time(start_time)}s [ENCID DERIVED] \
 {encid.hex()[:6]}...")
+
+                process_encid(start_time, encid, dbf_list, dbf_lock, t)
     return
 
-def process_encids
+# def process_encids
 
 ################################################################################
 ################################# MISCELLANEOUS ################################
