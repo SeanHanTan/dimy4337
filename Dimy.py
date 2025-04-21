@@ -15,14 +15,10 @@ SERVER_IP = socket.gethostbyname(socket.gethostname())
 SERVER_PORT = 55000
 SERVER_ADDR = (SERVER_IP, SERVER_PORT)
 
+# Details for Receiver
 # UDP port to send infromation.
 # Our Clients and Server will both be running on the same machine,
 # So the IP will be the same
-# UDP_IP = SERVER_IP
-# UDP_PORT = 5001
-# UDP_ADDR = (UDP_IP, UDP_PORT)
-
-# Details for Receiver
 RECV_IP = SERVER_IP
 RECV_PORT = 50001
 RECV_ADDR = (RECV_IP, RECV_PORT)
@@ -30,36 +26,55 @@ RECV_ADDR = (RECV_IP, RECV_PORT)
 # List of allowed times that `t` can take
 ALLOWED_TIME = [15, 18, 21, 24, 27, 30]
 
-################################## DATA STORES #################################
 ################################################################################
+################################## DATA STORES #################################
 
-# Holds a dictionary of collected EphIDs
-# Structure should look like
-# {
-#   int<port_number>: {
-#       'hash':   bytes<hash>,
-#       'shares': [( index , bytes<share> )],
-#       'reconstructed': bytes<ephid>
-#   }
-# }
+'''
+    Holds a dictionary of collected EphIDs
+    Structure should look like
+    {
+        int<port_number>: {
+            'hash':   bytes<hash>,
+            'shares': [( index , bytes<share> )],
+            'reconstructed': bytes<ephid>
+        }
+    }
+'''
 ephids_dict = {}
 
-# Holds a dictionary of EncIDs
-# Structure:
-# {
-#   int<port_number>: bytes<encid>
-# }
-encids_dict = {}
+# # Holds a dictionary of EncIDs
+# # Structure:
+# # {
+# #   int<port_number>: {
+# #       'encid': bytes<encid>
+# #       'time': int<time since last epoch in seconds>
+# #   }
+# #   
+# # }
+# #
 
-# Holds the past 21 dbfs
-# Length should always be 21
-dbf_dict = []
+# # Structure:
+# # {
+# #   bytes<encid>: int<time since last epoch in seconds>
+# # }
+# #
+# encids_dict = {}
+
+"""
+    Holds the past 6 dbfs
+    Length should always be 6
+    Structure <List[<Tuple>]>:
+    [( int<time of creation since program start (seconds)>, [0,1,...] )]
+"""
+dbf_list = []
 
 ################################################################################
-############################### Program Argument ###############################
+############################### PROGRAM ARGUMENT ###############################
 
-# Check the validity of sys args
-# Returns `t`, `k` & `n`, the values for time, minimum shares and `n` amount of shares
+"""
+    Check the validity of sys args
+    Returns `t`, `k` & `n`, the values for time, minimum shares and `n` amount of shares
+"""
 def check_args():
     # Check for valid input
     try:
@@ -132,15 +147,19 @@ Broadcasting to port: {recv_sock.getsockname()[1]}.")
     # broadcast_thread.daemon = True
     # broadcast_thread.start()
 
+    """
+        Specific locks used to access variable
+    """
     # Lock for EphID dictionary
     eph_dict_lock = threading.Lock()
     # Lock for EncID dictionary
-    enc_dict_lock = threading.Lock()
-
-    # Set the thread as a daemon so that it shuts down 
-    # when the user wants to stop the program.
-    # Our receiver is set to blocking mode, 
-    # and only writes to our dictionary
+    dbf_list_lock = threading.Lock()
+    """
+        Set the thread as a daemon so that it shuts down 
+        when the user wants to stop the program.
+        Our receiver is set to blocking mode, 
+        and only writes to our dictionary
+    """
     receiver_thread = threading.Thread(target=receive_shares, \
                     args=(start_time, recv_sock, client_port, ephids_dict, eph_dict_lock))
     receiver_thread.daemon = True
@@ -163,7 +182,10 @@ Broadcasting to port: {recv_sock.getsockname()[1]}.")
                 broadcast_thread.start()
 
             # Check our accumulated shares
-            process_shares(start_time, ephid, ephids_dict, encids_dict, eph_dict_lock, enc_dict_lock, k)
+            process_shares(start_time, ephid, ephids_dict, dbf_list, eph_dict_lock, dbf_list_lock, k, t)
+
+            # Check available EncIDs and construct DBFs out of them
+            # process_encids(start_time, encids_dict, enc_dict_lock)
 
     except KeyboardInterrupt:
         print(f"{get_elapsed_time(start_time)}s [EXIT THREADS] \
