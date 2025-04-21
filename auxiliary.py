@@ -89,12 +89,22 @@ def create_dbf():
 def delete_oldest_dbf(start_time, dbf_list, dbf_lock, t):
     curr_time = time.time() - start_time
     # First check if there are seven DBFs, then delete the oldest
-    
-
-    # Then go through the list and delete the DBF that is past `Dt`
     with dbf_lock:
+        if len(dbf_list) >= 7:
+            # Remove the first item on our list since we have only
+            # been using list methods throughout the program
+            # dbf_list.pop(0)
+            
+            # Get the oldest timed DBF
+            # Find its index, then remove it from the list
+            oldest = min([t[0] for t in dbf_list])
+            idx_of_tuple = [y[0] for y in dbf_list].index(oldest)
+            dbf_list.pop(idx_of_tuple)
+
+        # Then go through the list and delete the DBF that is past `Dt`
         for i, dbf_tup in enumerate(dbf_list):
-            if curr_time > dbf_tup[0] 
+            if curr_time > dbf_tup[0] + ((t * 6 * 6) / 60):
+                dbf_list.pop(i)
     return
 
 ################################################################################
