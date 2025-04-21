@@ -87,6 +87,7 @@ def create_dbf():
 
 # Deletes the DBF that is older than Dt = (t * 6 * 6) / 60 min 
 def delete_oldest_dbf(start_time, dbf_list, dbf_lock, t):
+    deleted = 0
     curr_time = time.time() - start_time
     # First check if there are seven DBFs, then delete the oldest
     with dbf_lock:
@@ -100,11 +101,23 @@ def delete_oldest_dbf(start_time, dbf_list, dbf_lock, t):
             oldest = min([t[0] for t in dbf_list])
             idx_of_tuple = [y[0] for y in dbf_list].index(oldest)
             dbf_list.pop(idx_of_tuple)
+            deleted += 1
+
+        if not oldest:
+            oldest = curr_time
 
         # Then go through the list and delete the DBF that is past `Dt`
         for i, dbf_tup in enumerate(dbf_list):
             if curr_time > dbf_tup[0] + ((t * 6 * 6) / 60):
                 dbf_list.pop(i)
+
+                if dbf_tup[0] < oldest:
+                    oldest = dbf_tup[0]
+                
+                deleted += 1
+        print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
+Total of {deleted} DBFs were deleted, the oldest having been created at: {oldest}s.")
+
     return
 
 ################################################################################
@@ -368,7 +381,7 @@ The DBF last created at {latest}sec has been modified as the EncID: {encid.hex()
         elif curr_time > latest + (t*6):
             dbf = create_dbf()
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
-New Bloom Filter generated since previous time was created {curr_time - latest}s ago.")
+New Bloom Filter generated since the last one was created {(curr_time - latest):.4f}s ago.")
             insert_into_dbf(encid, dbf)
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 6] \
 EncounterID {encid.hex()[:3]}... used is now forgotten.")
