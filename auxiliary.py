@@ -41,8 +41,8 @@ def gen_ephid(start_time):
     ephid_pub = ephid.public_key().public_bytes_raw()
     hash_prefix = hash_ephid(ephid_pub)
 
-    print(f"{get_elapsed_time(start_time)}s [EPHID GENERATED] \
-{ephid_pub.hex()[:6]}...")
+    print(f"{get_elapsed_time(start_time)}s [SEGMENT 1] \
+EphID generated: {ephid_pub.hex()[:6]}...")
     print(f"{get_elapsed_time(start_time)}s [EPHID HASH GENERATED] \
 First 3 bytes of hash: {hash_prefix.hex()}")
 
@@ -103,10 +103,12 @@ def delete_oldest_dbf(start_time, dbf_list, dbf_lock, t):
             idx_of_tuple = [y[0] for y in dbf_list].index(oldest)
             dbf_list.pop(idx_of_tuple)
             deleted += 1
+            print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
+A DBF has been deleted due to the client having more than 6 DBFs.")
 
         # Then go through the list and delete the DBF that is past `Dt`
         for i, dbf_tup in enumerate(dbf_list):
-            if curr_time > dbf_tup[0] + ((t * 6 * 6) / 60):
+            if curr_time > dbf_tup[0] + ((t * 6 * 6) / (60 * 60)):
                 dbf_list.pop(i)
 
                 if dbf_tup[0] < oldest:
@@ -115,7 +117,7 @@ def delete_oldest_dbf(start_time, dbf_list, dbf_lock, t):
                 deleted += 1
         if oldest != curr_time:
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
-Total of {deleted} DBFs were deleted, the oldest having been created at: {oldest}s.")
+Total of {deleted} DBFs were deleted, the oldest having been created at: {oldest:.2f}s.")
 
     return
 
@@ -151,11 +153,11 @@ Secret must be 32 bytes long.")
     # Split our 32-byte long secret into `n` amounts 
     shares = split_large(k, n, secret)
 
-    print(f"{get_elapsed_time(start_time)}s [SHAMIR SECRET SHARE] \
+    print(f"{get_elapsed_time(start_time)}s [SEGMENT 2] \
 {n} shares have been generated with k = {k}.")
 
     for i, share in enumerate(shares):
-        print(f"{get_elapsed_time(start_time)}s [SHARES GENERATED] \
+        print(f"{get_elapsed_time(start_time)}s [SEGMENT 2] \
 Share {share[0]}: {share[1].hex()[:6]}...")
 
     return shares
@@ -251,13 +253,13 @@ def broadcast_shares(start_time, sock, shares, hash, shut_down):
     i = 0
     while not shut_down.is_set() and i < len(shares):
 
-        rand_num = secrets.SystemRandom().uniform(0, 1)
-#         print(f"{get_elapsed_time(start_time)}s [BROADCASTING] \
-# Share {shares[i][0]}: {shares[i][1].hex()[:6]}...")
+#         rand_num = secrets.SystemRandom().uniform(0, 1)
+# #         print(f"{get_elapsed_time(start_time)}s [BROADCASTING] \
+# # Share {shares[i][0]}: {shares[i][1].hex()[:6]}...")
 
 #         if rand_num < 0.5:
-#             print (f"{get_elapsed_time(start_time)}s [BROADCASTING] \
-# Share {shares[i][0]} dropped: {shares[i][1].hex()[:6]}...")
+#             print (f"{get_elapsed_time(start_time)}s [SEGMENT 3-B] \
+# Share {shares[i][0]} dropped: {shares[i][1].hex()[:6]}... with a {rand_num*100}% send rate")
 
 #             dropped += 1
 #         else:
@@ -266,7 +268,7 @@ def broadcast_shares(start_time, sock, shares, hash, shut_down):
 
 #             # Convert the JSON object into a bytes buffer
 #             buff = bytes(data,encoding="utf-8")
-#             print(f"{get_elapsed_time(start_time)}s [BROADCASTING] \
+#             print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-A] \
 # Share {shares[i][0]} broadcasted: {shares[i][1].hex()[:6]}...")
 
 #             sock.sendto(buff, RECV_ADDR)
@@ -277,7 +279,7 @@ def broadcast_shares(start_time, sock, shares, hash, shut_down):
 
         # Convert the JSON object into a bytes buffer
         buff = bytes(data,encoding="utf-8")
-        print(f"{get_elapsed_time(start_time)}s [BROADCASTING] \
+        print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-A] \
 Share {shares[i][0]} broadcasted: {shares[i][1].hex()[:6]}...")
 
         sock.sendto(buff, RECV_ADDR)
@@ -297,7 +299,7 @@ All shares have been broadcasted.")
 
 # Receives the broadcasted shares from one client
 # Stores the shares into a dictionary
-def receive_shares(start_time, sock, port, ephids_dict, dict_lock):
+def receive_shares(start_time, sock, port, ephids_dict, dict_lock, n):
     while True:
         data, addr = sock.recvfrom(85)
 
@@ -331,9 +333,11 @@ def receive_shares(start_time, sock, port, ephids_dict, dict_lock):
                     else:
                         ephids_dict[addr[1]]['hash']   = eph_hash
                         ephids_dict[addr[1]]['shares'] = [share_tuple]
-                print(f"{get_elapsed_time(start_time)}s [RECEIVING {addr[1]}] \
-Share {share_tuple[0]}: {share_tuple[1].hex()[:6]}...")
-                # print(f"        DICTIONARY NOW {ephids_dict}")
+                print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-B] \
+Receiving from: {addr[1]}, EphID with hash: {eph_hash.hex()}, Share: {share_tuple[1].hex()[:6]}...")
+                print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-C] \
+{len(ephids_dict[addr[1]]['shares'])}/{n} received.")
+
 
 # TODO: For server communications
 def upload_contacts():
@@ -388,9 +392,9 @@ EncounterID {encid.hex()[:3]}... used is now forgotten.")
             dbf = dbf_list[idx_of_tuple][1]
             insert_into_dbf(encid, dbf)
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 6] \
-EncounterID {encid.hex()[:3]}... used is now forgotten.")
+EncounterID {encid.hex()[:6]}... used is now forgotten.")
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-A] \
-The DBF last created at {latest}sec has been modified as the EncID: {encid.hex()[:3]}... is now encoded in it.")
+The DBF last created at {latest:.2f}sec has been modified as the EncID: {encid.hex()[:6]}... is now encoded in it.")
             dbf_list[idx_of_tuple] = (latest, dbf)
 
         # Second case - Current time is past the expected time of t*6 seconds
@@ -400,7 +404,7 @@ The DBF last created at {latest}sec has been modified as the EncID: {encid.hex()
 New Bloom Filter generated since the last one was created {(curr_time - latest):.4f}s ago.")
             insert_into_dbf(encid, dbf)
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 6] \
-EncounterID {encid.hex()[:3]}... used is now forgotten.")
+EncounterID {encid.hex()[:6]}... used is now forgotten.")
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
 EncID: {encid.hex()[:6]} encoded into the new DBF.")
             dbf_list.append((curr_time, dbf))
@@ -429,24 +433,24 @@ def process_shares(start_time, priv_key, ephids_dict, dbf_list, eph_dict_lock, d
                 # Verify the hash of the reconstructed EphID
                 # Move to the next entry in the dictionary if not
                 if rec_hash != ephid_hash:
-                    print(f"{get_elapsed_time(start_time)}s [RECONSTRUCTING EPHID] \
-{rec_ephid.hex()[:6]}...")
-                    print(f"{get_elapsed_time(start_time)}s [VERIFYING EPHID] \
+                    print(f"{get_elapsed_time(start_time)}s [SEGMENT 4-A] \
+{len(shares_list)} shares recived. Reconstructed EphID: {rec_ephid.hex()[:6]}...")
+                    print(f"{get_elapsed_time(start_time)}s [SEGMENT 4-B] \
 Reconstructed EphID hash is not the same as advertised: {rec_hash.hex()} != {ephid_hash.hex()}.")
                     continue
 
                 # Check if a reconstructed EphID was stored before, or if 
                 if 'reconstructed' not in ephids_dict[port] or ephids_dict[port]['reconstructed'] != rec_ephid:
-                    print(f"{get_elapsed_time(start_time)}s [RECONSTRUCTING EPHID] \
-{rec_ephid.hex()[:6]}...")
-                    print(f"{get_elapsed_time(start_time)}s [VERIFYING EPHID] \
+                    print(f"{get_elapsed_time(start_time)}s [SEGMENT 4-A] \
+{len(shares_list)} shares recived. Reconstructed EphID: {rec_ephid.hex()[:6]}...")
+                    print(f"{get_elapsed_time(start_time)}s [SEGMENT 4-B] \
 Reconstructed Hash: {rec_hash.hex()}, Advertised Hash: {ephid_hash.hex()}")
                     
                     ephids_dict[port]['reconstructed'] = rec_ephid
                     
                     # Generate the EncID based on the EphID we received    
                     encid = gen_encid(priv_key, rec_ephid)
-                    print(f"{get_elapsed_time(start_time)}s [ENCID DERIVED] \
+                    print(f"{get_elapsed_time(start_time)}s [Segment 5-A/B] \
 {encid.hex()[:6]}...")
 
                     process_encid(start_time, encid, dbf_list, dbf_lock, t)
