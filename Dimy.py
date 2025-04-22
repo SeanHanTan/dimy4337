@@ -199,7 +199,7 @@ Broadcasting to port: {recv_sock.getsockname()[1]}.")
                 broadcast_thread.start()
 
             # Check our accumulated shares
-            process_shares(start_time, ephid, ephids_dict, eph_dict_lock, k)
+            process_shares(start_time, ephid, ephids_dict, eph_dict_lock, k, t)
 
 
             # Check our stored DBFs and delete the oldest one
