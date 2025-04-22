@@ -114,21 +114,18 @@ Total of {deleted} DBFs were deleted, the oldest having been created at: {oldest
     return
 
 """
-Given two DBFs as an int, convert to binary and get the union of both
+Given two DBFs as an int, get the union of both
 """
 def dbf_union(dbf1, dbf2):
-    db1_bytes = dbf1.to_bytes(102400, 'big')
-    db2_bytes = dbf2.to_bytes(102400, 'big')
-
-    return db1_bytes | db2_bytes
+    return dbf1 | dbf2
 
 """
     Parent stack is assumed to have been called under a lock
     Combines all avilable DBF
 """
 def combine_dbf(dbf_list):
-    # Create an empty dbf as bytes
-    cbf = (int(''.join(map(str, create_dbf())), 2) << 1)
+    # Create an empty dbf as an int
+    cbf = int(''.join(map(str, create_dbf())), 2) << 1
 
     for i, tuple in enumerate(dbf_list):
         cbf = dbf_union(cbf, (int(''.join(map(str, tuple[1])), 2) << 1))
@@ -249,12 +246,9 @@ def broadcast_shares(start_time, sock, shares, hash, shut_down):
     i = 0
     while not shut_down.is_set() and i < len(shares):
         rand_num = secrets.SystemRandom().uniform(0, 1)
-#         print(f"{get_elapsed_time(start_time)}s [BROADCASTING] \
-# Share {shares[i][0]}: {shares[i][1].hex()[:6]}...")
-
         if rand_num < 0.5:
             print (f"{get_elapsed_time(start_time)}s [SEGMENT 3-B] \
-Share {shares[i][0]} dropped: {shares[i][1].hex()[:6]}... with a {rand_num*100}% send rate")
+Share {shares[i][0]} dropped: {shares[i][1].hex()[:6]}... with a {(rand_num*100):.1f}% send rate")
             dropped += 1
         else:
             # First convert our hash:tuple object into a JSON object
@@ -268,26 +262,26 @@ Share {shares[i][0]} broadcasted: {shares[i][1].hex()[:6]}...")
             sock.sendto(buff, RECV_ADDR)
             sent += 1
 
-# # First convert our hash:tuple object into a JSON object
-#         data = json.dumps({hash.hex():[shares[i][0], shares[i][1].hex()]})
+# #         # First convert our hash:tuple object into a JSON object
+# #         data = json.dumps({hash.hex():[shares[i][0], shares[i][1].hex()]})
 
-#         # Convert the JSON object into a bytes buffer
-#         buff = bytes(data,encoding="utf-8")
-#         print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-A] \
-# Share {shares[i][0]} broadcasted: {shares[i][1].hex()[:6]}...")
+# #         # Convert the JSON object into a bytes buffer
+# #         buff = bytes(data,encoding="utf-8")
+# #         print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-A] \
+# # Share {shares[i][0]} broadcasted: {shares[i][1].hex()[:6]}...")
 
-#         sock.sendto(buff, RECV_ADDR)
-#         sent += 1
+# #         sock.sendto(buff, RECV_ADDR)
+# #         sent += 1
 
-        if i + 1 < len(shares):
-            # Wait for 3 seconds before sending the next share
-            time.sleep(3)
+# #         if i + 1 < len(shares):
+# #             # Wait for 3 seconds before sending the next share
+# #             time.sleep(3)
 
         i += 1
         
+#     print(f"{get_elapsed_time(start_time)}s [BROADCAST END] \
+# All shares have been broadcasted.")
     print(f"{get_elapsed_time(start_time)}s [BROADCAST END] \
-All shares have been broadcasted.")
-    print(f"{get_elapsed_time(start_time)}s [BROADCAST SUMARRY] \
 {sent} shares sent, {dropped} shares dropped.")
     return
 
@@ -327,30 +321,10 @@ def receive_shares(start_time, sock, port, ephids_dict, dict_lock, n):
                     else:
                         ephids_dict[addr[1]]['hash']   = eph_hash
                         ephids_dict[addr[1]]['shares'] = [share_tuple]
-                print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-B] \
-Receiving from: {addr[1]}, EphID with hash: {eph_hash.hex()}, Share: {share_tuple[1].hex()[:6]}...")
-                print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-C] \
-{len(ephids_dict[addr[1]]['shares'])}/{n} received.")
-
-def send_qbf_to_server(qbf, server_ip, server_port, start_time):
-    """
-    Sends the Query Bloom Filter (QBF) to the backend server over TCP.
-    Receives and prints the risk analysis result: 'matched' or 'not matched'.
-    """
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.connect((server_ip, server_port))
-            message = b"QBF:" + qbf
-            s.sendall(message)
-            print(f"{get_elapsed_time(start_time)}s [SEGMENT 10-A] \
-QBF successfully sent to server.")
-            result = s.recv(1024).decode()
-            print(f"{get_elapsed_time(start_time)}s [SEGMENT 10-B] \
-Risk analysis result: {result}")
-            return result
-    except Exception as e:
-        print(f"{get_elapsed_time(start_time)}s [ERROR] Unable to connect to server: {e}")
-        return None
+                print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-B/C] \
+Receiving hash: {eph_hash.hex()} from: [{addr[1]}] with Share: {share_tuple[1].hex()[:6]}... \
+at {len(ephids_dict[addr[1]]['shares'])}/{n} received.")
+                # print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-C] \
 
 """
     Used inside a new thread to communicate with the server
@@ -363,15 +337,23 @@ def upload_combined_dbf(start_time, combined_data, type):
     # thread.start()
     # print(f"[ACTIVE CONNECTIONS] {threading.activeCount() - 1}.")
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.connect(SERVER_ADDR)
-            message = type.encode('utf-8') + combined_data
-            s.sendall(message)
-            print(f"{get_elapsed_time(start_time)}s [SEGMENT 10-A] \
+        s.connect(SERVER_ADDR)
+        message = type.encode('utf-8') + combined_data
+        s.sendall(message)
+        print(f"{get_elapsed_time(start_time)}s [SEGMENT 10-A] \
 {type.strip('-')} successfully sent to server.")
-            result = s.recv(1024).decode()
+        result = s.recv(1024).decode('utf-8')
+
+        if 'Upload' in result:
+            print(f"{get_elapsed_time(start_time)}s [SEGMENT 10-B] \
+Upload Status: {result}")
+        elif 'Matched' in result:
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 10-B] \
 Risk analysis result: {result}")
-            return result
+        else:
+            print(f"{get_elapsed_time(start_time)}s [SEGMENT 10-B] \
+Message from Server: {result}")
+
     return
 
 ################################################################################
@@ -399,7 +381,7 @@ New Bloom Filter generated.")
 # EncID: {encid.hex()[:6]} encoded into DBF with binary form: \
 # {bin(int(''.join(map(str, dbf)), 2) << 1)}.")
         print(f"{get_elapsed_time(start_time)}s [SEGMENT 6] \
-EncounterID {encid.hex()[:3]}... used is now forgotten.")
+EncID: {encid.hex()[:6]}... is now forgotten.")
         with dbf_lock:
             dbf_list.append((curr_time, dbf))
         return
@@ -417,7 +399,7 @@ EncounterID {encid.hex()[:3]}... used is now forgotten.")
             dbf = dbf_list[idx_of_tuple][1]
             insert_into_dbf(encid, dbf)
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 6] \
-EncounterID {encid.hex()[:6]}... used is now forgotten.")
+EncID: {encid.hex()[:6]}... is now forgotten.")
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-A] \
 The DBF last created at {recent:.2f}sec has been modified as the EncID: {encid.hex()[:6]}... is now encoded in it.")
             dbf_list[idx_of_tuple] = (recent, dbf)
@@ -429,9 +411,9 @@ The DBF last created at {recent:.2f}sec has been modified as the EncID: {encid.h
 New Bloom Filter generated since the last one was created {(curr_time - recent):.4f}s ago.")
             insert_into_dbf(encid, dbf)
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 6] \
-EncounterID {encid.hex()[:6]}... used is now forgotten.")
+EncID {encid.hex()[:6]}... is now forgotten.")
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
-EncID: {encid.hex()[:6]} encoded into the new DBF.")
+EncID: {encid.hex()[:6]}... encoded into the new DBF.")
             dbf_list.append((curr_time, dbf))
         
     return

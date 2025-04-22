@@ -125,6 +125,9 @@ def main():
     cbf_sent = False    
     qbf_sent = False
 
+    if sick:
+        print("[CLIENT] User is sick.")
+
     # Determines when the thread will shutdown
     start_time = time.time()
 
@@ -203,17 +206,21 @@ Broadcasting to port: {recv_sock.getsockname()[1]}.")
             # This is hard coded so that the client will only send the CBF after at least 4 DBFs
             # have been created to show that all the DBFs were combined.
             with dbf_list_lock:
-                if sick and len(dbf_list) >= 4 and not cbf_sent and dbf_list:
+                if sick and len(dbf_list) >= 5 and not cbf_sent and dbf_list:
                     cbf = combine_dbf(dbf_list)
                     print(f"{get_elapsed_time(start_time)}s [Segment 9] \
-CBF Created out of {len(dbf_list)} DBFs")
-                    cbf_data = bytes(cbf)
+CBF Created out of {len(dbf_list)} DBF(s)")
+                    cbf_data = cbf.to_bytes(102400, 'big')
                     print(f"{get_elapsed_time(start_time)}s [SEGMENT 9] \
-Sample bytes of CBF in hex: {qbf_data[:6].hex()}...")
+Sample bytes of CBF in hex: {cbf_data[:6].hex()}...")
                     print(f"{get_elapsed_time(start_time)}s [SEGMENT 9] Sending CBF \
-of ({len(qbf_data)} bytes) to server at {SERVER_IP}:{SERVER_PORT}...")
+of ({len(cbf_data)} bytes) to server at {SERVER_ADDR}...")
                     # TODO: Create entrypoint to server and send CBF
                     cbf_sent = True
+
+                    backend_communication = threading.Thread(target=upload_combined_dbf, \
+                        args=(start_time, cbf_data, "CBF-"))
+                    backend_communication.start()                    
 
                 if dbf_list:
                     # Check the oldest DBF and compare it to Dt
@@ -221,33 +228,37 @@ of ({len(qbf_data)} bytes) to server at {SERVER_IP}:{SERVER_PORT}...")
                     oldest = min([t[0] for t in dbf_list])
                     curr_time = time.time() - start_time
                     if not cbf_sent and (curr_time > oldest + Dt):
-                        print(f"{get_elapsed_time(start_time)}s [SEGMENT 8] Generating QBF: \
+                    # if not cbf_sent and (curr_time > oldest + t*6):
+                        print(f"{get_elapsed_time(start_time)}s [SEGMENT 8] Generating QBF - \
 Oldest DBF was created at {oldest:.2f}secs.")
-                        qbf = combine_dbf(start_time, dbf_list)
-                        qbf_data = bytes(qbf)
+                        qbf = combine_dbf(dbf_list)
+                        qbf_data = qbf.to_bytes(102400, 'big')
                         print(f"{get_elapsed_time(start_time)}s [SEGMENT 8] \
 Sample bytes of QBF in hex: {qbf_data[:6].hex()}...")
                         print(f"{get_elapsed_time(start_time)}s [SEGMENT 8] Sending QBF \
-of ({len(qbf_data)} bytes) to server at {SERVER_IP}:{SERVER_PORT}...")
-                        qbf_sent = True
+of ({len(qbf_data)} bytes) to server at {SERVER_ADDR}...")
+                        # qbf_sent = True
+
+                        backend_communication = threading.Thread(target=upload_combined_dbf, \
+                        args=(start_time, qbf_data, "QBF-"))
+                        backend_communication.start()
             
             # Create a new thread and start a connection with the server
-            if qbf_sent and qbf_data:
-                # send_qbf_to_server(qbf_data, SERVER_IP, SERVER_PORT, start_time)
-                # upload_combined_dbf(start_time, qbf_data, "QBF-")
-                backend_communication = threading.Thread(target=upload_combined_dbf, \
-                        args=(start_time, qbf_data, "QBF-"))
-                backend_communication.start()
-            elif cbf_sent and cbf_data:
-                # upload_combined_dbf(start_time, cbf_data, "CBF-")
-                backend_communication = threading.Thread(target=upload_combined_dbf, \
-                        args=(start_time, qbf_data, "CBF-"))
-                backend_communication.start()
+            # if qbf_sent is not False and qbf_data:
+            #     # upload_combined_dbf(start_time, qbf_data, "QBF-")
+            #     backend_communication = threading.Thread(target=upload_combined_dbf, \
+            #             args=(start_time, qbf_data, "QBF-"))
+            #     backend_communication.start()
+            # elif cbf_sent is not False and len(cbf_data) > 0:
+            #     # upload_combined_dbf(start_time, cbf_data, "CBF-")
+            #     backend_communication = threading.Thread(target=upload_combined_dbf, \
+            #             args=(start_time, cbf_data, "CBF-"))
+            #     backend_communication.start()
 
             # Revert our qbf_sent flag
             # No need to revert CBF flag as specs do not mention any further sending
             # of CBFs or QBFs
-            qbf_sent = False
+            # qbf_sent = False
 
     except KeyboardInterrupt:
         print(f"{get_elapsed_time(start_time)}s [EXIT THREADS] \
