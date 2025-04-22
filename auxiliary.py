@@ -401,7 +401,7 @@ EncID: {encid.hex()[:6]} encoded into the new DBF.")
     return
 
 # Looks through all shares and then attempts to reconstruct them
-def process_shares(start_time, priv_key, ephids_dict, eph_dict_lock, k, t):
+def process_shares(start_time, priv_key, ephids_dict, dbf_list, eph_dict_lock, k, t):
     # Go through our ephid dictionary.
     # Check that there are at least k shares.
     # Reconstruct the EphID, then hash it
