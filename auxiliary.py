@@ -76,7 +76,7 @@ def hash_ephid(ephid):
 def insert_into_dbf(encid, dbf):
     for i in range(3):
         # Generates a hash value for the element and sets the corresponding bit to 1
-        hash_val = mmh3.hash(encid, i) % 100000
+        hash_val = mmh3.hash(encid, i) % 102400
         dbf[hash_val] = 1
     return
 
@@ -97,15 +97,36 @@ def delete_oldest_dbf(start_time, dbf_list, dbf_lock, t):
             dbf_list.pop(idx)
             deleted += 1
 
-        for i, tup in enumerate(dbf_list[:]):
-            if curr_time > tup[0] + ((t * 6 * 6) / 60):
-                dbf_list.remove(tup)
-                if tup[0] < oldest:
-                    oldest = tup[0]
+        for i, dbf_tup in enumerate(dbf_list):
+            if curr_time > dbf_tup[0] + ((t * 6 * 6) / 60):
+                dbf_list.pop(i)
+
+                if dbf_tup[0] < oldest:
+                    oldest = dbf_tup[0]
+
                 deleted += 1
-        if deleted:
+        if oldest != curr_time:
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
 Total of {deleted} DBFs were deleted, the oldest created at: {oldest:.2f}s.")
+            
+    return
+
+"""
+Given two DBFs in byte format, get the union of both
+"""
+def dbf_union(dbf1, dbf2):
+    return dbf1 | dbf2
+
+"""
+    Parent stack is assumed to have been called under a lock
+"""
+def create_cbf(dbf_list, dbf_lock):
+    # Create an empty dbf as bytes
+    cbf = (int(''.join(map(str, create_dbf())), 2) << 1).to_bytes(102400, 'big')
+
+    for i, tuple in enumerate(dbf_list):
+        cbf = dbf_union(cbf, (int(''.join(map(str, tuple[1])), 2) << 1).to_bytes(102400, 'big'))
+    return cbf
 
 
 ################################################################################
@@ -369,7 +390,7 @@ The DBF last created at {latest}sec has been modified as the EncID: {encid.hex()
         elif curr_time > latest + (t*6):
             dbf = create_dbf()
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
-New Bloom Filter generated since previous time was created {curr_time - latest}s ago.")
+New Bloom Filter generated since the last one was created {(curr_time - latest):.4f}s ago.")
             insert_into_dbf(encid, dbf)
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 6] \
 EncounterID {encid.hex()[:3]}... used is now forgotten.")
@@ -380,7 +401,7 @@ EncID: {encid.hex()[:6]} encoded into the new DBF.")
     return
 
 # Looks through all shares and then attempts to reconstruct them
-def process_shares(start_time, priv_key, ephids_dict, eph_dict_lock,  k):
+def process_shares(start_time, priv_key, ephids_dict, eph_dict_lock, k, t):
     # Go through our ephid dictionary.
     # Check that there are at least k shares.
     # Reconstruct the EphID, then hash it
@@ -408,13 +429,19 @@ Reconstructed EphID hash is not the same as advertised: {rec_hash.hex()} != {eph
                     continue
 
                 # Check if the EphID has been stored before
-                if 'reconstructed' not in ephids_dict[port]:
+                if 'reconstructed' not in ephids_dict[port] or ephids_dict[port]['reconstructed'] != rec_ephid:
                     print(f"{get_elapsed_time(start_time)}s [RECONSTRUCTING EPHID] \
 {rec_ephid.hex()[:6]}...")
                     print(f"{get_elapsed_time(start_time)}s [VERIFYING EPHID] \
 Reconstructed Hash: {rec_hash.hex()}, Advertised Hash: {ephid_hash.hex()}")
                     
                     ephids_dict[port]['reconstructed'] = rec_ephid
+                    # Generate the EncID based on the EphID we received    
+                    encid = gen_encid(priv_key, rec_ephid)
+                    print(f"{get_elapsed_time(start_time)}s [ENCID DERIVED] \
+                    {encid.hex()[:6]}...") 
+
+                    process_encid(start_time, encid, dbf_list, dbf_lock, t)
 
                 # Generate the EncID based on the EphID we received    
                 encid = gen_encid(priv_key, rec_ephid)
@@ -467,33 +494,6 @@ def clear_dict_items(dict, port):
     if port in dict:
         dict[port].clear()
 
-def generate_qbf_from_dbfs(dbf_list, dbf_lock, start_time, Dt, last_qbf_sent):
-    """
-    Every Dt seconds, combine available DBFs into a QBF.
-    Truncate DBF list to a max of 6 entries.
-    Returns tuple: (qbf, updated_last_qbf_sent)
-    """
-    if time.time() - last_qbf_sent <= Dt:
-        return None, last_qbf_sent
-
-    with dbf_lock:
-        if not dbf_list:
-            print(f"{get_elapsed_time(start_time)}s [TASK 8] No DBFs available to create QBF.")
-            return None, last_qbf_sent
-
-        print(f"{get_elapsed_time(start_time)}s [TASK 8] Combining {len(dbf_list)} DBFs into QBF...")
-        qbf = dbf_list[0][1][:]  # Copy first DBF
-        for i in range(1, len(dbf_list)):
-            qbf = [b1 | b2 for b1, b2 in zip(qbf, dbf_list[i][1])]
-
-        print(f"{get_elapsed_time(start_time)}s [TASK 8] QBF created. Sample bits: {''.join(map(str, qbf[:30]))}...")
-
-        # Ensure max 6 DBFs
-        while len(dbf_list) > 6:
-            removed_time, _ = dbf_list.pop(0)
-            print(f"{get_elapsed_time(start_time)}s [TASK 8] Removed oldest DBF created at {removed_time:.2f}s to maintain max 6 DBFs.")
-
-    return qbf, time.time()
 def send_qbf_to_server(qbf, server_ip, server_port, start_time):
     """
     Sends the Query Bloom Filter (QBF) to the backend server over TCP.
