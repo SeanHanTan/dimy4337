@@ -262,6 +262,7 @@ Share {shares[i][0]} broadcasted: {shares[i][1].hex()[:6]}...")
             sock.sendto(buff, RECV_ADDR)
             sent += 1
 
+
 # #         # First convert our hash:tuple object into a JSON object
 # #         data = json.dumps({hash.hex():[shares[i][0], shares[i][1].hex()]})
 
@@ -273,9 +274,10 @@ Share {shares[i][0]} broadcasted: {shares[i][1].hex()[:6]}...")
 # #         sock.sendto(buff, RECV_ADDR)
 # #         sent += 1
 
-# #         if i + 1 < len(shares):
-# #             # Wait for 3 seconds before sending the next share
-# #             time.sleep(3)
+
+        if i + 1 < len(shares):
+            # Wait for 3 seconds before sending the next share
+            time.sleep(3)
 
         i += 1
         
@@ -287,7 +289,7 @@ Share {shares[i][0]} broadcasted: {shares[i][1].hex()[:6]}...")
 
 # Receives the broadcasted shares from one client
 # Stores the shares into a dictionary
-def receive_shares(start_time, sock, port, ephids_dict, dict_lock, n):
+def receive_shares(start_time, sock, port, ephids_dict, dict_lock, k):
     while True:
         data, addr = sock.recvfrom(85)
 
@@ -323,7 +325,7 @@ def receive_shares(start_time, sock, port, ephids_dict, dict_lock, n):
                         ephids_dict[addr[1]]['shares'] = [share_tuple]
                 print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-B/C] \
 Receiving hash: {eph_hash.hex()} from: [{addr[1]}] with Share: {share_tuple[1].hex()[:6]}... \
-at {len(ephids_dict[addr[1]]['shares'])}/{n} received.")
+({len(ephids_dict[addr[1]]['shares'])}/{k} received).")
                 # print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-C] \
 
 """
@@ -408,7 +410,7 @@ The DBF last created at {recent:.2f}sec has been modified as the EncID: {encid.h
         elif curr_time > recent + (t*6):
             dbf = create_dbf()
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
-New Bloom Filter generated since the last one was created {(curr_time - recent):.4f}s ago.")
+New Bloom Filter generated since the last one was created at {recent:.2f}sec.")
             insert_into_dbf(encid, dbf)
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 6] \
 EncID {encid.hex()[:6]}... is now forgotten.")
