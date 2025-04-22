@@ -130,7 +130,7 @@ def main():
     start_time = time.time()
 
     last_qbf_sent = 0
-    Dt = 30 # Every 30 seconds we attempt QBF generation
+    Dt = (t * 6 * 6) / 3600 # Every 30 seconds we attempt QBF generation
 
     shut_down = threading.Event()
 
@@ -199,7 +199,7 @@ Broadcasting to port: {recv_sock.getsockname()[1]}.")
                 broadcast_thread.start()
 
             # Check our accumulated shares
-            process_shares(start_time, ephid, ephids_dict, eph_dict_lock, k, t)
+            process_shares(start_time, ephid, ephids_dict, dbf_list,eph_dict_lock, k, t)
 
 
             # Check our stored DBFs and delete the oldest one
@@ -233,7 +233,6 @@ out of {len(dbf_list)} DBFs")
                             upload_dummy_cbf(start_time)
                             dummy_cbf_uploaded = True
 
-            time.sleep(1)
 
     except KeyboardInterrupt:
         print(f"{get_elapsed_time(start_time)}s [EXIT THREADS] \
