@@ -103,10 +103,12 @@ def delete_oldest_dbf(start_time, dbf_list, dbf_lock, t):
             idx_of_tuple = [y[0] for y in dbf_list].index(oldest)
             dbf_list.pop(idx_of_tuple)
             deleted += 1
+            print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
+A DBF has been deleted due to the client having more than 6 DBFs.")
 
         # Then go through the list and delete the DBF that is past `Dt`
         for i, dbf_tup in enumerate(dbf_list):
-            if curr_time > dbf_tup[0] + ((t * 6 * 6) / 60):
+            if curr_time > dbf_tup[0] + ((t * 6 * 6) / (60 * 60)):
                 dbf_list.pop(i)
 
                 if dbf_tup[0] < oldest:
@@ -115,7 +117,7 @@ def delete_oldest_dbf(start_time, dbf_list, dbf_lock, t):
                 deleted += 1
         if oldest != curr_time:
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
-Total of {deleted} DBFs were deleted, the oldest having been created at: {oldest}s.")
+Total of {deleted} DBFs were deleted, the oldest having been created at: {oldest:.2f}s.")
 
     return
 
@@ -332,7 +334,7 @@ def receive_shares(start_time, sock, port, ephids_dict, dict_lock, n):
                         ephids_dict[addr[1]]['hash']   = eph_hash
                         ephids_dict[addr[1]]['shares'] = [share_tuple]
                 print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-B] \
-Receiving from: {addr[1]}, Share with hash {eph_hash}: {share_tuple[1].hex()[:6]}...")
+Receiving from: {addr[1]}, EphID with hash: {eph_hash.hex()}, Share: {share_tuple[1].hex()[:6]}...")
                 print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-C] \
 {len(ephids_dict[addr[1]]['shares'])}/{n} received.")
 
@@ -390,9 +392,9 @@ EncounterID {encid.hex()[:3]}... used is now forgotten.")
             dbf = dbf_list[idx_of_tuple][1]
             insert_into_dbf(encid, dbf)
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 6] \
-EncounterID {encid.hex()[:3]}... used is now forgotten.")
+EncounterID {encid.hex()[:6]}... used is now forgotten.")
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-A] \
-The DBF last created at {latest}sec has been modified as the EncID: {encid.hex()[:3]}... is now encoded in it.")
+The DBF last created at {latest:.2f}sec has been modified as the EncID: {encid.hex()[:6]}... is now encoded in it.")
             dbf_list[idx_of_tuple] = (latest, dbf)
 
         # Second case - Current time is past the expected time of t*6 seconds
@@ -402,7 +404,7 @@ The DBF last created at {latest}sec has been modified as the EncID: {encid.hex()
 New Bloom Filter generated since the last one was created {(curr_time - latest):.4f}s ago.")
             insert_into_dbf(encid, dbf)
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 6] \
-EncounterID {encid.hex()[:3]}... used is now forgotten.")
+EncounterID {encid.hex()[:6]}... used is now forgotten.")
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
 EncID: {encid.hex()[:6]} encoded into the new DBF.")
             dbf_list.append((curr_time, dbf))
