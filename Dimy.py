@@ -108,7 +108,7 @@ def check_args():
         sys.exit(1)
 
     # Make sure that t > 3*n
-    if t <= 3*n:
+    if t < 3*n:
         print("Invalid time input: Time has to be larger than 3*n")
         sys.exit(1)
     
@@ -204,7 +204,7 @@ Broadcasting to port: {recv_sock.getsockname()[1]}.")
             # have been created to show that all the DBFs were combined.
             with dbf_list_lock:
                 if sick and len(dbf_list) >= 4 and not cbf_sent and dbf_list:
-                    cbf = combine_dbf(start_time, dbf_list, dbf_list_lock)
+                    cbf = combine_dbf(dbf_list)
                     print(f"{get_elapsed_time(start_time)}s [Segment 9] \
 CBF Created out of {len(dbf_list)} DBFs")
                     cbf_data = bytes(cbf)

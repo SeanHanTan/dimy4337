@@ -114,10 +114,13 @@ Total of {deleted} DBFs were deleted, the oldest having been created at: {oldest
     return
 
 """
-Given two DBFs in byte format, get the union of both
+Given two DBFs as an int, convert to binary and get the union of both
 """
 def dbf_union(dbf1, dbf2):
-    return dbf1 | dbf2
+    db1_bytes = dbf1.to_bytes(102400, 'big')
+    db2_bytes = dbf2.to_bytes(102400, 'big')
+
+    return db1_bytes | db2_bytes
 
 """
     Parent stack is assumed to have been called under a lock
@@ -125,10 +128,10 @@ def dbf_union(dbf1, dbf2):
 """
 def combine_dbf(dbf_list):
     # Create an empty dbf as bytes
-    cbf = (int(''.join(map(str, create_dbf())), 2) << 1).to_bytes(102400, 'big')
+    cbf = (int(''.join(map(str, create_dbf())), 2) << 1)
 
     for i, tuple in enumerate(dbf_list):
-        cbf = dbf_union(cbf, (int(''.join(map(str, tuple[1])), 2) << 1).to_bytes(102400, 'big'))
+        cbf = dbf_union(cbf, (int(''.join(map(str, tuple[1])), 2) << 1))
     return cbf
 
 ################################################################################
@@ -245,38 +248,36 @@ def broadcast_shares(start_time, sock, shares, hash, shut_down):
     dropped = 0
     i = 0
     while not shut_down.is_set() and i < len(shares):
+        rand_num = secrets.SystemRandom().uniform(0, 1)
+#         print(f"{get_elapsed_time(start_time)}s [BROADCASTING] \
+# Share {shares[i][0]}: {shares[i][1].hex()[:6]}...")
 
-#         rand_num = secrets.SystemRandom().uniform(0, 1)
-# #         print(f"{get_elapsed_time(start_time)}s [BROADCASTING] \
-# # Share {shares[i][0]}: {shares[i][1].hex()[:6]}...")
+        if rand_num < 0.5:
+            print (f"{get_elapsed_time(start_time)}s [SEGMENT 3-B] \
+Share {shares[i][0]} dropped: {shares[i][1].hex()[:6]}... with a {rand_num*100}% send rate")
+            dropped += 1
+        else:
+            # First convert our hash:tuple object into a JSON object
+            data = json.dumps({hash.hex():[shares[i][0], shares[i][1].hex()]})
 
-#         if rand_num < 0.5:
-#             print (f"{get_elapsed_time(start_time)}s [SEGMENT 3-B] \
-# Share {shares[i][0]} dropped: {shares[i][1].hex()[:6]}... with a {rand_num*100}% send rate")
-
-#             dropped += 1
-#         else:
-#             # First convert our hash:tuple object into a JSON object
-#             data = json.dumps({hash.hex():[shares[i][0], shares[i][1].hex()]})
-
-#             # Convert the JSON object into a bytes buffer
-#             buff = bytes(data,encoding="utf-8")
-#             print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-A] \
-# Share {shares[i][0]} broadcasted: {shares[i][1].hex()[:6]}...")
-
-#             sock.sendto(buff, RECV_ADDR)
-#             sent += 1
-
-# First convert our hash:tuple object into a JSON object
-        data = json.dumps({hash.hex():[shares[i][0], shares[i][1].hex()]})
-
-        # Convert the JSON object into a bytes buffer
-        buff = bytes(data,encoding="utf-8")
-        print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-A] \
+            # Convert the JSON object into a bytes buffer
+            buff = bytes(data,encoding="utf-8")
+            print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-A] \
 Share {shares[i][0]} broadcasted: {shares[i][1].hex()[:6]}...")
 
-        sock.sendto(buff, RECV_ADDR)
-        sent += 1
+            sock.sendto(buff, RECV_ADDR)
+            sent += 1
+
+# # First convert our hash:tuple object into a JSON object
+#         data = json.dumps({hash.hex():[shares[i][0], shares[i][1].hex()]})
+
+#         # Convert the JSON object into a bytes buffer
+#         buff = bytes(data,encoding="utf-8")
+#         print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-A] \
+# Share {shares[i][0]} broadcasted: {shares[i][1].hex()[:6]}...")
+
+#         sock.sendto(buff, RECV_ADDR)
+#         sent += 1
 
         if i + 1 < len(shares):
             # Wait for 3 seconds before sending the next share
