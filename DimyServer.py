@@ -31,14 +31,14 @@ def handleClient(conn, addr):
         if not data:
             return
 
-        if data.startswith(b'CBF:'):
+        if data.startswith(b'CBF-'):
             cbf_data = data[4:]
             CBF_LIST.append(cbf_data)
             print(f"[{addr}] Uploaded CBF ({len(cbf_data)} bytes)")
 
-            conn.sendall(b"Upload confirmed")
+            conn.send(b"Upload confirmed")
 
-        elif data.startswith(b'QBF:'):
+        elif data.startswith(b'QBF-'):
             qbf_data = data[4:]
             print(f"[{addr}] Received QBF ({len(qbf_data)} bytes). Sample bits: {qbf_data[:8].hex()}...")
 
