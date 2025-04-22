@@ -122,8 +122,7 @@ def main():
 
     uploaded_cbf = False
     dummy_cbf_uploaded = False
-    encids_dict = {}
-    enc_dict_lock = threading.Lock()
+    
     t, k, n, sick = check_args()
 
     # Set a flag to check if CBF was sent
@@ -203,9 +202,6 @@ Broadcasting to port: {recv_sock.getsockname()[1]}.")
                 broadcast_thread.start()
 
             # Check our accumulated shares
-
-            process_shares(start_time, ephid, ephids_dict, encids_dict, eph_dict_lock, enc_dict_lock, k)
-
 
             process_shares(start_time, ephid, ephids_dict, dbf_list, \
                            eph_dict_lock, dbf_list_lock, k, t)
