@@ -85,8 +85,8 @@ def insert_into_dbf(encid, dbf):
 def create_dbf():
     return [0] * 102400
 
-# Deletes the DBF that is older than Dt = (t * 6 * 6) / 60 min 
-def delete_oldest_dbf(start_time, dbf_list, dbf_lock, t):
+# Deletes the DBF that is older than Dt = ((t * 6 * 6) / 60) min 
+def delete_oldest_dbf(start_time, dbf_list, dbf_lock, Dt):
     deleted = 0
     curr_time = time.time() - start_time
     oldest = curr_time
@@ -100,36 +100,36 @@ def delete_oldest_dbf(start_time, dbf_list, dbf_lock, t):
 A DBF has been deleted due to the client having more than 6 DBFs.")
 
         for i, dbf_tup in enumerate(dbf_list):
-            if curr_time > dbf_tup[0] + ((t * 6 * 6) / (60 * 60)):
+            if curr_time > dbf_tup[0] + Dt:
                 dbf_list.pop(i)
 
                 if dbf_tup[0] < oldest:
                     oldest = dbf_tup[0]
 
                 deleted += 1
-        if oldest != curr_time:
+        if deleted:
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
 Total of {deleted} DBFs were deleted, the oldest having been created at: {oldest:.2f}s.")
 
     return
 
 """
-Given two DBFs in byte format, get the union of both
+Given two DBFs as an int, get the union of both
 """
 def dbf_union(dbf1, dbf2):
     return dbf1 | dbf2
 
 """
     Parent stack is assumed to have been called under a lock
+    Combines all avilable DBF
 """
-def create_cbf(dbf_list, dbf_lock):
-    # Create an empty dbf as bytes
-    cbf = (int(''.join(map(str, create_dbf())), 2) << 1).to_bytes(102400, 'big')
+def combine_dbf(dbf_list):
+    # Create an empty dbf as an int
+    cbf = int(''.join(map(str, create_dbf())), 2) << 1
 
     for i, tuple in enumerate(dbf_list):
-        cbf = dbf_union(cbf, (int(''.join(map(str, tuple[1])), 2) << 1).to_bytes(102400, 'big'))
+        cbf = dbf_union(cbf, (int(''.join(map(str, tuple[1])), 2) << 1))
     return cbf
-
 
 ################################################################################
 ############################ CRYPTOGRAPHIC FUNCTIONS ###########################
@@ -245,38 +245,35 @@ def broadcast_shares(start_time, sock, shares, hash, shut_down):
     dropped = 0
     i = 0
     while not shut_down.is_set() and i < len(shares):
+        rand_num = secrets.SystemRandom().uniform(0, 1)
+        if rand_num < 0.5:
+            print (f"{get_elapsed_time(start_time)}s [SEGMENT 3-B] \
+Share {shares[i][0]} dropped: {shares[i][1].hex()[:6]}... with a {(rand_num*100):.1f}% send rate")
+            dropped += 1
+        else:
+            # First convert our hash:tuple object into a JSON object
+            data = json.dumps({hash.hex():[shares[i][0], shares[i][1].hex()]})
 
-#         rand_num = secrets.SystemRandom().uniform(0, 1)
-# #         print(f"{get_elapsed_time(start_time)}s [BROADCASTING] \
-# # Share {shares[i][0]}: {shares[i][1].hex()[:6]}...")
-
-#         if rand_num < 0.5:
-#             print (f"{get_elapsed_time(start_time)}s [SEGMENT 3-B] \
-# Share {shares[i][0]} dropped: {shares[i][1].hex()[:6]}... with a {rand_num*100}% send rate")
-
-#             dropped += 1
-#         else:
-#             # First convert our hash:tuple object into a JSON object
-#             data = json.dumps({hash.hex():[shares[i][0], shares[i][1].hex()]})
-
-#             # Convert the JSON object into a bytes buffer
-#             buff = bytes(data,encoding="utf-8")
-#             print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-A] \
-# Share {shares[i][0]} broadcasted: {shares[i][1].hex()[:6]}...")
-
-#             sock.sendto(buff, RECV_ADDR)
-#             sent += 1
-
-# First convert our hash:tuple object into a JSON object
-        data = json.dumps({hash.hex():[shares[i][0], shares[i][1].hex()]})
-
-        # Convert the JSON object into a bytes buffer
-        buff = bytes(data,encoding="utf-8")
-        print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-A] \
+            # Convert the JSON object into a bytes buffer
+            buff = bytes(data,encoding="utf-8")
+            print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-A] \
 Share {shares[i][0]} broadcasted: {shares[i][1].hex()[:6]}...")
 
-        sock.sendto(buff, RECV_ADDR)
-        sent += 1
+            sock.sendto(buff, RECV_ADDR)
+            sent += 1
+
+
+# #         # First convert our hash:tuple object into a JSON object
+# #         data = json.dumps({hash.hex():[shares[i][0], shares[i][1].hex()]})
+
+# #         # Convert the JSON object into a bytes buffer
+# #         buff = bytes(data,encoding="utf-8")
+# #         print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-A] \
+# # Share {shares[i][0]} broadcasted: {shares[i][1].hex()[:6]}...")
+
+# #         sock.sendto(buff, RECV_ADDR)
+# #         sent += 1
+
 
         if i + 1 < len(shares):
             # Wait for 3 seconds before sending the next share
@@ -284,15 +281,15 @@ Share {shares[i][0]} broadcasted: {shares[i][1].hex()[:6]}...")
 
         i += 1
         
+#     print(f"{get_elapsed_time(start_time)}s [BROADCAST END] \
+# All shares have been broadcasted.")
     print(f"{get_elapsed_time(start_time)}s [BROADCAST END] \
-All shares have been broadcasted.")
-    print(f"{get_elapsed_time(start_time)}s [BROADCAST SUMARRY] \
 {sent} shares sent, {dropped} shares dropped.")
     return
 
 # Receives the broadcasted shares from one client
 # Stores the shares into a dictionary
-def receive_shares(start_time, sock, port, ephids_dict, dict_lock, n):
+def receive_shares(start_time, sock, port, ephids_dict, dict_lock, k):
     while True:
         data, addr = sock.recvfrom(85)
 
@@ -326,27 +323,46 @@ def receive_shares(start_time, sock, port, ephids_dict, dict_lock, n):
                     else:
                         ephids_dict[addr[1]]['hash']   = eph_hash
                         ephids_dict[addr[1]]['shares'] = [share_tuple]
-                print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-B] \
-Receiving from: {addr[1]}, EphID with hash: {eph_hash.hex()}, Share: {share_tuple[1].hex()[:6]}...")
-                print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-C] \
-{len(ephids_dict[addr[1]]['shares'])}/{n} received.")
+                print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-B/C] \
+Receiving hash: {eph_hash.hex()} from: [{addr[1]}] with Share: {share_tuple[1].hex()[:6]}... \
+({len(ephids_dict[addr[1]]['shares'])}/{k} received).")
+                # print(f"{get_elapsed_time(start_time)}s [SEGMENT 3-C] \
 
-
-# TODO: For server communications
-def upload_contacts():
+"""
+    Used inside a new thread to communicate with the server
+"""
+def upload_combined_dbf(start_time, combined_data, type):
     # # Connect to server
     # conn, addr = server.accept()
     # # Create a new thread to handle actions with the newly accepted client
     # thread = threading.Thread(target=handleClient, args=(conn, addr))
     # thread.start()
     # print(f"[ACTIVE CONNECTIONS] {threading.activeCount() - 1}.")
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.connect(SERVER_ADDR)
+        message = type.encode('utf-8') + combined_data
+        s.sendall(message)
+        print(f"{get_elapsed_time(start_time)}s [SEGMENT 10-A] \
+{type.strip('-')} successfully sent to server.")
+        result = s.recv(1024).decode('utf-8')
+
+        if 'Upload' in result:
+            print(f"{get_elapsed_time(start_time)}s [SEGMENT 10-B] \
+Upload Status: {result}")
+        elif 'Matched' in result:
+            print(f"{get_elapsed_time(start_time)}s [SEGMENT 10-B] \
+Risk analysis result: {result}")
+        else:
+            print(f"{get_elapsed_time(start_time)}s [SEGMENT 10-B] \
+Message from Server: {result}")
+
     return
 
 ################################################################################
 #################################### CHECKS ####################################
 """
     The function will take an encid and determine wether to create a new DBF or 
-    insert into an older one. Returns the latest creation time of the DBF
+    insert into an older one.
 """
 def process_encid(start_time, encid, dbf_list, dbf_lock, t):
     
@@ -367,45 +383,45 @@ New Bloom Filter generated.")
 # EncID: {encid.hex()[:6]} encoded into DBF with binary form: \
 # {bin(int(''.join(map(str, dbf)), 2) << 1)}.")
         print(f"{get_elapsed_time(start_time)}s [SEGMENT 6] \
-EncounterID {encid.hex()[:3]}... used is now forgotten.")
+EncID: {encid.hex()[:6]}... is now forgotten.")
         with dbf_lock:
             dbf_list.append((curr_time, dbf))
         return
 
     # Check the most recent creation_time in the list
     with dbf_lock:
-        latest = max([t[0] for t in dbf_list])
+        recent = max([t[0] for t in dbf_list])
         # First case - Current time is within t*6 seconds of the creation time
-        if curr_time <= latest + (t*6):
+        if curr_time <= recent + (t*6):
             # Take the tuple from the list and replace it
             # First get the index
-            idx_of_tuple = [y[0] for y in dbf_list].index(latest)
+            idx_of_tuple = [y[0] for y in dbf_list].index(recent)
 
             # Then modify the dbf and replace it in the list
             dbf = dbf_list[idx_of_tuple][1]
             insert_into_dbf(encid, dbf)
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 6] \
-EncounterID {encid.hex()[:6]}... used is now forgotten.")
+EncID: {encid.hex()[:6]}... is now forgotten.")
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-A] \
-The DBF last created at {latest:.2f}sec has been modified as the EncID: {encid.hex()[:6]}... is now encoded in it.")
-            dbf_list[idx_of_tuple] = (latest, dbf)
+The DBF last created at {recent:.2f}sec has been modified as the EncID: {encid.hex()[:6]}... is now encoded in it.")
+            dbf_list[idx_of_tuple] = (recent, dbf)
 
         # Second case - Current time is past the expected time of t*6 seconds
-        elif curr_time > latest + (t*6):
+        elif curr_time > recent + (t*6):
             dbf = create_dbf()
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
-New Bloom Filter generated since the last one was created {(curr_time - latest):.4f}s ago.")
+New Bloom Filter generated since the last one was created at {recent:.2f}sec.")
             insert_into_dbf(encid, dbf)
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 6] \
-EncounterID {encid.hex()[:6]}... used is now forgotten.")
+EncID {encid.hex()[:6]}... is now forgotten.")
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
-EncID: {encid.hex()[:6]} encoded into the new DBF.")
+EncID: {encid.hex()[:6]}... encoded into the new DBF.")
             dbf_list.append((curr_time, dbf))
         
     return
 
 # Looks through all shares and then attempts to reconstruct them
-def process_shares(start_time, priv_key, ephids_dict, dbf_list, eph_dict_lock, k, t):
+def process_shares(start_time, priv_key, ephids_dict, dbf_list, eph_dict_lock, dbf_lock, k, t):
     # Go through our ephid dictionary.
     # Check that there are at least k shares.
     # Reconstruct the EphID, then hash it
@@ -440,19 +456,13 @@ Reconstructed EphID hash is not the same as advertised: {rec_hash.hex()} != {eph
 Reconstructed Hash: {rec_hash.hex()}, Advertised Hash: {ephid_hash.hex()}")
                     
                     ephids_dict[port]['reconstructed'] = rec_ephid
-                    # Generate the EncID based on the EphID we received    
-                    encid = gen_encid(priv_key, rec_ephid)
 
+                    # Generate the EncID based on the EphID we received
+                    encid = gen_encid(priv_key, rec_ephid)
                     print(f"{get_elapsed_time(start_time)}s [Segment 5-A/B] \
 EncID derived: {encid.hex()[:6]}...")
 
-
                     process_encid(start_time, encid, dbf_list, dbf_lock, t)
-
-                # Generate the EncID based on the EphID we received    
-                encid = gen_encid(priv_key, rec_ephid)
-                print(f"{get_elapsed_time(start_time)}s [ENCID DERIVED] {encid.hex()[:6]}...")
-                process_encid(start_time, encid, dbf_list, dbf_lock, t)
 
     return
 
@@ -465,58 +475,8 @@ EncID derived: {encid.hex()[:6]}...")
 def get_elapsed_time(start_time):
     return f"{(time.time() - start_time):.2f}"
 
-def generate_qbf_from_dbfs(dbf_list, dbf_lock, start_time, Dt, last_qbf_sent):
-    """
-    Every Dt seconds, combine available DBFs into a QBF.
-    Truncate DBF list to a max of 6 entries.
-    Returns tuple: (qbf, updated_last_qbf_sent)
-    """
-    if time.time() - last_qbf_sent <= Dt:
-        return None, last_qbf_sent
-
-    with dbf_lock:
-        if not dbf_list:
-            print(f"{get_elapsed_time(start_time)}s [TASK 8] No DBFs available to create QBF.")
-            return None, last_qbf_sent
-
-        print(f"{get_elapsed_time(start_time)}s [TASK 8] Combining {len(dbf_list)} DBFs into QBF...")
-        qbf = dbf_list[0][1][:]  # Copy first DBF
-        for i in range(1, len(dbf_list)):
-            qbf = [b1 | b2 for b1, b2 in zip(qbf, dbf_list[i][1])]
-
-        print(f"{get_elapsed_time(start_time)}s [TASK 8] QBF created. Sample bits: {''.join(map(str, qbf[:30]))}...")
-
-        # Ensure max 6 DBFs
-        while len(dbf_list) > 6:
-            removed_time, _ = dbf_list.pop(0)
-            print(f"{get_elapsed_time(start_time)}s [TASK 8] Removed oldest DBF created at {removed_time:.2f}s to maintain max 6 DBFs.")
-
-    return qbf, time.time()
-
-
 # TODO: Modify if needed
 # Given a dictionary and port, clears the entry relating to the port 
 def clear_dict_items(dict, port):
     if port in dict:
         dict[port].clear()
-
-def send_qbf_to_server(qbf, server_ip, server_port, start_time):
-    """
-    Sends the Query Bloom Filter (QBF) to the backend server over TCP.
-    Receives and prints the risk analysis result: 'matched' or 'not matched'.
-    """
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.connect((server_ip, server_port))
-            message = b"QBF:" + qbf
-            s.sendall(message)
-            print(f"{get_elapsed_time(start_time)}s [QBF] QBF successfully sent to server.")
-            result = s.recv(1024).decode()
-            print(f"{get_elapsed_time(start_time)}s [SERVER RESPONSE] Risk analysis result: {result}")
-            return result
-    except Exception as e:
-        print(f"{get_elapsed_time(start_time)}s [ERROR] Unable to connect to server: {e}")
-        return None
-    
-def upload_dummy_cbf(start_time):
-    print(f"{get_elapsed_time(start_time)}s [DUMMY CBF] Uploaded dummy CBF for demo/match trigger.")
