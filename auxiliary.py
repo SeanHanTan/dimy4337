@@ -68,6 +68,7 @@ def hash_ephid(ephid):
     hash_prefix = hash_digest[:3]
     return hash_prefix
 
+
 ################################################################################
 ################################# BLOOM FILTERS ################################
 
@@ -107,6 +108,75 @@ def delete_oldest_dbf(start_time, dbf_list, dbf_lock, t):
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
 Total of {deleted} DBFs were deleted, the oldest created at: {oldest:.2f}s.")
 
+
+
+################################################################################
+################################# BLOOM FILTERS ################################
+
+# Encodes an encid into a dbf
+# Returns the dbf
+def insert_into_dbf(encid, dbf):
+    for i in range(3):
+        # Generates a hash value for the element and sets the corresponding bit to 1
+        hash_val = mmh3.hash(encid, i) % 102400
+        dbf[hash_val] = 1
+    return
+
+# Creates a Bloom filter  of size 100KB
+# 100 * 1024 bytes
+def create_dbf():
+    return [0] * 102400
+
+# Deletes the DBF that is older than Dt = (t * 6 * 6) / 60 min 
+def delete_oldest_dbf(start_time, dbf_list, dbf_lock, t):
+    deleted = 0
+    curr_time = time.time() - start_time
+    oldest = curr_time
+    # First check if there are seven DBFs, then delete the oldest
+    with dbf_lock:
+        if len(dbf_list) >= 7:
+            # Remove the first item on our list since we have only
+            # been using list methods throughout the program
+            # dbf_list.pop(0)
+            
+            # Get the oldest timed DBF
+            # Find its index, then remove it from the list
+            oldest = min([t[0] for t in dbf_list])
+            idx_of_tuple = [y[0] for y in dbf_list].index(oldest)
+            dbf_list.pop(idx_of_tuple)
+            deleted += 1
+
+        # Then go through the list and delete the DBF that is past `Dt`
+        for i, dbf_tup in enumerate(dbf_list):
+            if curr_time > dbf_tup[0] + ((t * 6 * 6) / 60):
+                dbf_list.pop(i)
+
+                if dbf_tup[0] < oldest:
+                    oldest = dbf_tup[0]
+                
+                deleted += 1
+        if oldest != curr_time:
+            print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
+Total of {deleted} DBFs were deleted, the oldest having been created at: {oldest}s.")
+
+    return
+
+"""
+Given two DBFs in byte format, get the union of both
+"""
+def dbf_union(dbf1, dbf2):
+    return dbf1 | dbf2
+
+"""
+    Parent stack is assumed to have been called under a lock
+"""
+def create_cbf(dbf_list, dbf_lock):
+    # Create an empty dbf as bytes
+    cbf = (int(''.join(map(str, create_dbf())), 2) << 1).to_bytes(102400, 'big')
+
+    for i, tuple in enumerate(dbf_list):
+        cbf = dbf_union(cbf, (int(''.join(map(str, tuple[1])), 2) << 1).to_bytes(102400, 'big'))
+    return cbf
 
 ################################################################################
 ############################ CRYPTOGRAPHIC FUNCTIONS ###########################
@@ -259,6 +329,32 @@ Share {shares[i][0]} broadcasted: {shares[i][1].hex()[:6]}...")
             # Wait for 3 seconds before sending the next share
             time.sleep(3)
 
+
+
+#             # Convert the JSON object into a bytes buffer
+#             buff = bytes(data,encoding="utf-8")
+#             print(f"{get_elapsed_time(start_time)}s [BROADCASTING] \
+# Share {shares[i][0]} broadcasted: {shares[i][1].hex()[:6]}...")
+
+#             sock.sendto(buff, RECV_ADDR)
+#             sent += 1
+
+# First convert our hash:tuple object into a JSON object
+        data = json.dumps({hash.hex():[shares[i][0], shares[i][1].hex()]})
+
+        # Convert the JSON object into a bytes buffer
+        buff = bytes(data,encoding="utf-8")
+        print(f"{get_elapsed_time(start_time)}s [BROADCASTING] \
+Share {shares[i][0]} broadcasted: {shares[i][1].hex()[:6]}...")
+
+        sock.sendto(buff, RECV_ADDR)
+        sent += 1
+
+        if i + 1 < len(shares):
+            # Wait for 3 seconds before sending the next share
+            time.sleep(3)
+
+
         i += 1
         
     print(f"{get_elapsed_time(start_time)}s [BROADCAST END] \
@@ -369,7 +465,11 @@ The DBF last created at {latest}sec has been modified as the EncID: {encid.hex()
         elif curr_time > latest + (t*6):
             dbf = create_dbf()
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
+
 New Bloom Filter generated since previous time was created {curr_time - latest}s ago.")
+
+New Bloom Filter generated since the last one was created {(curr_time - latest):.4f}s ago.")
+
             insert_into_dbf(encid, dbf)
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 6] \
 EncounterID {encid.hex()[:3]}... used is now forgotten.")
@@ -380,7 +480,11 @@ EncID: {encid.hex()[:6]} encoded into the new DBF.")
     return
 
 # Looks through all shares and then attempts to reconstruct them
+
 def process_shares(start_time, priv_key, ephids_dict, encids_dict, eph_dict_lock, enc_dict_lock, k):
+
+def process_shares(start_time, priv_key, ephids_dict, dbf_list, eph_dict_lock, dbf_lock, k, t):
+
     # Go through our ephid dictionary.
     # Check that there are at least k shares.
     # Reconstruct the EphID, then hash it
@@ -407,14 +511,20 @@ def process_shares(start_time, priv_key, ephids_dict, encids_dict, eph_dict_lock
 Reconstructed EphID hash is not the same as advertised: {rec_hash.hex()} != {ephid_hash.hex()}.")
                     continue
 
+
                 # Check if the EphID has been stored before
                 if 'reconstructed' not in ephids_dict[port]:
+
+                # Check if a reconstructed EphID was stored before, or if 
+                if 'reconstructed' not in ephids_dict[port] or ephids_dict[port]['reconstructed'] != rec_ephid:
+
                     print(f"{get_elapsed_time(start_time)}s [RECONSTRUCTING EPHID] \
 {rec_ephid.hex()[:6]}...")
                     print(f"{get_elapsed_time(start_time)}s [VERIFYING EPHID] \
 Reconstructed Hash: {rec_hash.hex()}, Advertised Hash: {ephid_hash.hex()}")
                     
                     ephids_dict[port]['reconstructed'] = rec_ephid
+
 
                 # Generate the EncID based on the EphID we received    
                 encid = gen_encid(priv_key, rec_ephid)
@@ -469,11 +579,31 @@ def generate_qbf_from_dbfs(dbf_list, dbf_lock, start_time, Dt, last_qbf_sent):
     return qbf, time.time()
 
 
+
+                    
+                    # Generate the EncID based on the EphID we received    
+                    encid = gen_encid(priv_key, rec_ephid)
+                    print(f"{get_elapsed_time(start_time)}s [ENCID DERIVED] \
+{encid.hex()[:6]}...")
+
+                    process_encid(start_time, encid, dbf_list, dbf_lock, t)
+                    
+    return
+
+################################################################################
+################################# MISCELLANEOUS ################################
+
+# Returns the elapsed time since start of program in string format
+def get_elapsed_time(start_time):
+    return f"{(time.time() - start_time):.2f}"
+
+
 # TODO: Modify if needed
 # Given a dictionary and port, clears the entry relating to the port 
 def clear_dict_items(dict, port):
     if port in dict:
         dict[port].clear()
+
 
 def generate_qbf_from_dbfs(dbf_list, dbf_lock, start_time, Dt, last_qbf_sent):
     """

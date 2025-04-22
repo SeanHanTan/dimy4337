@@ -111,6 +111,7 @@ def check_args():
         sys.exit(1)
     
     return t, k, n, sick
+
 dummy_cbf_uploaded = False
 
 ################################################################################
@@ -118,6 +119,7 @@ dummy_cbf_uploaded = False
 
 # Main function that deals with general client functionality
 def main():
+
     uploaded_cbf = False
     dummy_cbf_uploaded = False
     encids_dict = {}
@@ -129,6 +131,7 @@ def main():
 
     # Determines when the thread will shutdown
     start_time = time.time()
+
 
     last_qbf_sent = 0
     Dt = 30 # Every 30 seconds we attempt QBF generation
@@ -200,7 +203,12 @@ Broadcasting to port: {recv_sock.getsockname()[1]}.")
                 broadcast_thread.start()
 
             # Check our accumulated shares
+
             process_shares(start_time, ephid, ephids_dict, encids_dict, eph_dict_lock, enc_dict_lock, k)
+
+
+            process_shares(start_time, ephid, ephids_dict, dbf_list, \
+                           eph_dict_lock, dbf_list_lock, k, t)
 
 
             # Check our stored DBFs and delete the oldest one
@@ -213,6 +221,7 @@ Broadcasting to port: {recv_sock.getsockname()[1]}.")
                     cbf = create_cbf(start_time, dbf_list, dbf_list_lock)
                     print(f"{get_elapsed_time(start_time)}s CBF Created \
 out of {len(dbf_list)} DBFs")
+
                     
                     cbf_sent = True
                     uploaded_cbf = True
@@ -235,6 +244,13 @@ out of {len(dbf_list)} DBFs")
                             dummy_cbf_uploaded = True
 
             time.sleep(1)
+
+                    # TODO: Create entrypoint to server and send CBF
+
+            if not cbf_sent:
+                # TODO: Create QBF and send to Server
+                pass
+
 
     except KeyboardInterrupt:
         print(f"{get_elapsed_time(start_time)}s [EXIT THREADS] \
