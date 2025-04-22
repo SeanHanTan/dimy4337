@@ -13,7 +13,12 @@ DISCONNECT_MSG = "!DISCONNECTING"
 # Datastores for CBFs and QBFs
 CBF={}
 QBF={}
+CBF_LIST = []
 
+def bloom_match(qbf_bytes, cbf_bytes):
+    """Bitwise check: returns True if any 1-bit overlaps."""
+    return any(b1 & b2 for b1, b2 in zip(qbf_bytes, cbf_bytes))
+    
 # Compares the given QBF with the CBFs to see if there has been any issues
 def compareBloomFilters():
     return
@@ -21,22 +26,40 @@ def compareBloomFilters():
 
 def handleClient(conn, addr):
     print(f"[NEW CONNECTION] {addr} connected.")
+    try:
+        data = conn.recv(SIZE)
+        if not data:
+            return
 
-    connected = True
-    while connected:
-        # Receive messages from the connection and decode it using our specified format
-        msg = conn.recv(SIZE).decode(FORMAT)
-        # Exit the while loop when we receive a message to disconnect
-        if msg == DISCONNECT_MSG:
-            connected = False
-        
-        print(f"[{addr}] {msg}")
-        # Create a new message, encode it in utf-8 and then send it.
-        msg = f"Message receive: {msg}"
-        conn.send(msg.encode(FORMAT))
+        if data.startswith(b'CBF:'):
+            cbf_data = data[4:]
+            CBF_LIST.append(cbf_data)
+            print(f"[{addr}] Uploaded CBF ({len(cbf_data)} bytes)")
 
-    # Finally close the connection
-    conn.close()
+            conn.sendall(b"Upload confirmed")
+
+        elif data.startswith(b'QBF:'):
+            qbf_data = data[4:]
+            print(f"[{addr}] Received QBF ({len(qbf_data)} bytes). Sample bits: {qbf_data[:8].hex()}...")
+
+            result = "not matched"
+            for cbf in CBF_LIST:
+                if bloom_match(qbf_data, cbf):
+                    result = "matched"
+                    break
+
+            print(f"[{addr}] QBF checked -> {result}")
+            conn.sendall(result.encode())
+
+        else:
+            conn.sendall(b"Invalid request")
+
+    except Exception as e:
+        print(f"[ERROR] {e}")
+    finally:
+        conn.close()
+
+
 
 def main():
     print("[STARTING] Server is starting up...")

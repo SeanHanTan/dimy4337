@@ -90,30 +90,22 @@ def delete_oldest_dbf(start_time, dbf_list, dbf_lock, t):
     deleted = 0
     curr_time = time.time() - start_time
     oldest = curr_time
-    # First check if there are seven DBFs, then delete the oldest
     with dbf_lock:
         if len(dbf_list) >= 7:
-            # Remove the first item on our list since we have only
-            # been using list methods throughout the program
-            # dbf_list.pop(0)
-            
-            # Get the oldest timed DBF
-            # Find its index, then remove it from the list
             oldest = min([t[0] for t in dbf_list])
-            idx_of_tuple = [y[0] for y in dbf_list].index(oldest)
-            dbf_list.pop(idx_of_tuple)
+            idx = [y[0] for y in dbf_list].index(oldest)
+            dbf_list.pop(idx)
             deleted += 1
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
 A DBF has been deleted due to the client having more than 6 DBFs.")
 
-        # Then go through the list and delete the DBF that is past `Dt`
         for i, dbf_tup in enumerate(dbf_list):
             if curr_time > dbf_tup[0] + ((t * 6 * 6) / (60 * 60)):
                 dbf_list.pop(i)
 
                 if dbf_tup[0] < oldest:
                     oldest = dbf_tup[0]
-                
+
                 deleted += 1
         if oldest != curr_time:
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
@@ -137,6 +129,7 @@ def create_cbf(dbf_list, dbf_lock):
     for i, tuple in enumerate(dbf_list):
         cbf = dbf_union(cbf, (int(''.join(map(str, tuple[1])), 2) << 1).to_bytes(102400, 'big'))
     return cbf
+
 
 ################################################################################
 ############################ CRYPTOGRAPHIC FUNCTIONS ###########################
@@ -412,7 +405,7 @@ EncID: {encid.hex()[:6]} encoded into the new DBF.")
     return
 
 # Looks through all shares and then attempts to reconstruct them
-def process_shares(start_time, priv_key, ephids_dict, dbf_list, eph_dict_lock, dbf_lock, k, t):
+def process_shares(start_time, priv_key, ephids_dict, dbf_list, eph_dict_lock, k, t):
     # Go through our ephid dictionary.
     # Check that there are at least k shares.
     # Reconstruct the EphID, then hash it
@@ -439,7 +432,7 @@ def process_shares(start_time, priv_key, ephids_dict, dbf_list, eph_dict_lock, d
 Reconstructed EphID hash is not the same as advertised: {rec_hash.hex()} != {ephid_hash.hex()}.")
                     continue
 
-                # Check if a reconstructed EphID was stored before, or if 
+                # Check if the EphID has been stored before
                 if 'reconstructed' not in ephids_dict[port] or ephids_dict[port]['reconstructed'] != rec_ephid:
                     print(f"{get_elapsed_time(start_time)}s [SEGMENT 4-A] \
 {len(shares_list)} shares recived. Reconstructed EphID: {rec_ephid.hex()[:6]}...")
@@ -447,15 +440,23 @@ Reconstructed EphID hash is not the same as advertised: {rec_hash.hex()} != {eph
 Reconstructed Hash: {rec_hash.hex()}, Advertised Hash: {ephid_hash.hex()}")
                     
                     ephids_dict[port]['reconstructed'] = rec_ephid
-                    
                     # Generate the EncID based on the EphID we received    
                     encid = gen_encid(priv_key, rec_ephid)
+
                     print(f"{get_elapsed_time(start_time)}s [Segment 5-A/B] \
-{encid.hex()[:6]}...")
+EncID derived: {encid.hex()[:6]}...")
+
 
                     process_encid(start_time, encid, dbf_list, dbf_lock, t)
-                    
+
+                # Generate the EncID based on the EphID we received    
+                encid = gen_encid(priv_key, rec_ephid)
+                print(f"{get_elapsed_time(start_time)}s [ENCID DERIVED] {encid.hex()[:6]}...")
+                process_encid(start_time, encid, dbf_list, dbf_lock, t)
+
     return
+
+# def process_encids
 
 ################################################################################
 ################################# MISCELLANEOUS ################################
@@ -464,8 +465,58 @@ Reconstructed Hash: {rec_hash.hex()}, Advertised Hash: {ephid_hash.hex()}")
 def get_elapsed_time(start_time):
     return f"{(time.time() - start_time):.2f}"
 
+def generate_qbf_from_dbfs(dbf_list, dbf_lock, start_time, Dt, last_qbf_sent):
+    """
+    Every Dt seconds, combine available DBFs into a QBF.
+    Truncate DBF list to a max of 6 entries.
+    Returns tuple: (qbf, updated_last_qbf_sent)
+    """
+    if time.time() - last_qbf_sent <= Dt:
+        return None, last_qbf_sent
+
+    with dbf_lock:
+        if not dbf_list:
+            print(f"{get_elapsed_time(start_time)}s [TASK 8] No DBFs available to create QBF.")
+            return None, last_qbf_sent
+
+        print(f"{get_elapsed_time(start_time)}s [TASK 8] Combining {len(dbf_list)} DBFs into QBF...")
+        qbf = dbf_list[0][1][:]  # Copy first DBF
+        for i in range(1, len(dbf_list)):
+            qbf = [b1 | b2 for b1, b2 in zip(qbf, dbf_list[i][1])]
+
+        print(f"{get_elapsed_time(start_time)}s [TASK 8] QBF created. Sample bits: {''.join(map(str, qbf[:30]))}...")
+
+        # Ensure max 6 DBFs
+        while len(dbf_list) > 6:
+            removed_time, _ = dbf_list.pop(0)
+            print(f"{get_elapsed_time(start_time)}s [TASK 8] Removed oldest DBF created at {removed_time:.2f}s to maintain max 6 DBFs.")
+
+    return qbf, time.time()
+
+
 # TODO: Modify if needed
 # Given a dictionary and port, clears the entry relating to the port 
 def clear_dict_items(dict, port):
     if port in dict:
         dict[port].clear()
+
+def send_qbf_to_server(qbf, server_ip, server_port, start_time):
+    """
+    Sends the Query Bloom Filter (QBF) to the backend server over TCP.
+    Receives and prints the risk analysis result: 'matched' or 'not matched'.
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect((server_ip, server_port))
+            message = b"QBF:" + qbf
+            s.sendall(message)
+            print(f"{get_elapsed_time(start_time)}s [QBF] QBF successfully sent to server.")
+            result = s.recv(1024).decode()
+            print(f"{get_elapsed_time(start_time)}s [SERVER RESPONSE] Risk analysis result: {result}")
+            return result
+    except Exception as e:
+        print(f"{get_elapsed_time(start_time)}s [ERROR] Unable to connect to server: {e}")
+        return None
+    
+def upload_dummy_cbf(start_time):
+    print(f"{get_elapsed_time(start_time)}s [DUMMY CBF] Uploaded dummy CBF for demo/match trigger.")

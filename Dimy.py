@@ -111,12 +111,16 @@ def check_args():
         sys.exit(1)
     
     return t, k, n, sick
+dummy_cbf_uploaded = False
 
 ################################################################################
 ##################################### MAIN #####################################
 
 # Main function that deals with general client functionality
 def main():
+    uploaded_cbf = False
+    dummy_cbf_uploaded = False
+    
     t, k, n, sick = check_args()
 
     # Set a flag to check if CBF was sent
@@ -124,6 +128,9 @@ def main():
 
     # Determines when the thread will shutdown
     start_time = time.time()
+
+    last_qbf_sent = 0
+    Dt = (t * 6 * 6) / 3600 # Every 30 seconds we attempt QBF generation
 
     shut_down = threading.Event()
 
@@ -192,8 +199,8 @@ Broadcasting to port: {recv_sock.getsockname()[1]}.")
                 broadcast_thread.start()
 
             # Check our accumulated shares
-            process_shares(start_time, ephid, ephids_dict, dbf_list, \
-                           eph_dict_lock, dbf_list_lock, k, t)
+            process_shares(start_time, ephid, ephids_dict, dbf_list,eph_dict_lock, k, t)
+
 
             # Check our stored DBFs and delete the oldest one
             delete_oldest_dbf(start_time, dbf_list, dbf_list_lock, t)
@@ -207,9 +214,30 @@ Broadcasting to port: {recv_sock.getsockname()[1]}.")
 CBF Created out of {len(dbf_list)} DBFs")
                     # TODO: Create entrypoint to server and send CBF
 
-            if not cbf_sent:
-                # TODO: Create QBF and send to Server
-                pass
+                    print(f"{get_elapsed_time(start_time)}s CBF Created \
+out of {len(dbf_list)} DBFs")
+                    
+                    cbf_sent = True
+                    uploaded_cbf = True
+
+            # Task 10: QBF generation & server communication
+            if not uploaded_cbf and (time.time() - last_qbf_sent > Dt):
+                print(f"{get_elapsed_time(start_time)}s [QBF] Generating QBF from DBFs...")
+                with dbf_list_lock:
+                    if dbf_list:
+                        qbf = dbf_list[0][1][:]
+                        for i in range(1, len(dbf_list)):
+                            qbf = [b1 | b2 for b1, b2 in zip(qbf, dbf_list[i][1])]
+                        qbf_data = bytes(qbf)
+                        print(f"{get_elapsed_time(start_time)}s [QBF] Sample bits (hex): {qbf_data[:8].hex()}...")
+                        print(f"{get_elapsed_time(start_time)}s [QBF] Sending QBF ({len(qbf_data)} bytes) to server at {SERVER_IP}:{SERVER_PORT}...")
+                        send_qbf_to_server(qbf_data, SERVER_IP, SERVER_PORT, start_time)
+                        last_qbf_sent = time.time()
+                        if not dummy_cbf_uploaded:
+                            upload_dummy_cbf(start_time)
+                            dummy_cbf_uploaded = True
+
+
 
     except KeyboardInterrupt:
         print(f"{get_elapsed_time(start_time)}s [EXIT THREADS] \
