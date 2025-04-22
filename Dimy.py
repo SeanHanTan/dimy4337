@@ -178,7 +178,7 @@ Broadcasting to port: {recv_sock.getsockname()[1]}.")
         and only writes to our dictionary
     """
     receiver_thread = threading.Thread(target=receive_shares, \
-                    args=(start_time, recv_sock, client_port, ephids_dict, eph_dict_lock, n))
+                    args=(start_time, recv_sock, client_port, ephids_dict, eph_dict_lock))
     receiver_thread.daemon = True
     receiver_thread.start()
 
@@ -210,10 +210,6 @@ Broadcasting to port: {recv_sock.getsockname()[1]}.")
             with dbf_list_lock:
                 if sick and len(dbf_list) >= 4 and not cbf_sent:
                     cbf = create_cbf(start_time, dbf_list, dbf_list_lock)
-                    print(f"{get_elapsed_time(start_time)}s [Segment 9] \
-CBF Created out of {len(dbf_list)} DBFs")
-                    # TODO: Create entrypoint to server and send CBF
-
                     print(f"{get_elapsed_time(start_time)}s CBF Created \
 out of {len(dbf_list)} DBFs")
                     
@@ -223,19 +219,16 @@ out of {len(dbf_list)} DBFs")
             # Task 10: QBF generation & server communication
             if not uploaded_cbf and (time.time() - last_qbf_sent > Dt):
                 print(f"{get_elapsed_time(start_time)}s [QBF] Generating QBF from DBFs...")
-                with dbf_list_lock:
-                    if dbf_list:
-                        qbf = dbf_list[0][1][:]
-                        for i in range(1, len(dbf_list)):
-                            qbf = [b1 | b2 for b1, b2 in zip(qbf, dbf_list[i][1])]
-                        qbf_data = bytes(qbf)
-                        print(f"{get_elapsed_time(start_time)}s [QBF] Sample bits (hex): {qbf_data[:8].hex()}...")
-                        print(f"{get_elapsed_time(start_time)}s [QBF] Sending QBF ({len(qbf_data)} bytes) to server at {SERVER_IP}:{SERVER_PORT}...")
-                        send_qbf_to_server(qbf_data, SERVER_IP, SERVER_PORT, start_time)
-                        last_qbf_sent = time.time()
-                        if not dummy_cbf_uploaded:
-                            upload_dummy_cbf(start_time)
-                            dummy_cbf_uploaded = True
+                qbf, last_qbf_sent = generate_qbf_from_dbfs(dbf_list, dbf_list_lock, start_time, Dt, last_qbf_sent)
+
+                if qbf:
+                    qbf_data = bytes(qbf)
+                    print(f"{get_elapsed_time(start_time)}s [QBF] Sample bits (hex): {qbf_data[:8].hex()}...")
+                    print(f"{get_elapsed_time(start_time)}s [QBF] Sending QBF ({len(qbf_data)} bytes) to server at {SERVER_IP}:{SERVER_PORT}...")
+                    send_qbf_to_server(qbf_data, SERVER_IP, SERVER_PORT, start_time)
+                    if not dummy_cbf_uploaded:
+                        upload_dummy_cbf(start_time)
+                        dummy_cbf_uploaded = True
 
 
 
