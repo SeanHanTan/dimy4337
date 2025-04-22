@@ -107,7 +107,7 @@ A DBF has been deleted due to the client having more than 6 DBFs.")
                     oldest = dbf_tup[0]
 
                 deleted += 1
-        if oldest != curr_time:
+        if deleted:
             print(f"{get_elapsed_time(start_time)}s [SEGMENT 7-B] \
 Total of {deleted} DBFs were deleted, the oldest having been created at: {oldest:.2f}s.")
 
@@ -517,6 +517,3 @@ def send_qbf_to_server(qbf, server_ip, server_port, start_time):
     except Exception as e:
         print(f"{get_elapsed_time(start_time)}s [ERROR] Unable to connect to server: {e}")
         return None
-    
-def upload_dummy_cbf(start_time):
-    print(f"{get_elapsed_time(start_time)}s [DUMMY CBF] Uploaded dummy CBF for demo/match trigger.")
