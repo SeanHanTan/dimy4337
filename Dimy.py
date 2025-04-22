@@ -171,7 +171,7 @@ Broadcasting to port: {recv_sock.getsockname()[1]}.")
         and only writes to our dictionary
     """
     receiver_thread = threading.Thread(target=receive_shares, \
-                    args=(start_time, recv_sock, client_port, ephids_dict, eph_dict_lock))
+                    args=(start_time, recv_sock, client_port, ephids_dict, eph_dict_lock, n))
     receiver_thread.daemon = True
     receiver_thread.start()
 
@@ -203,8 +203,8 @@ Broadcasting to port: {recv_sock.getsockname()[1]}.")
             with dbf_list_lock:
                 if sick and len(dbf_list) >= 4 and not cbf_sent:
                     cbf = create_cbf(start_time, dbf_list, dbf_list_lock)
-                    print(f"{get_elapsed_time(start_time)}s CBF Created \
-out of {len(dbf_list)} DBFs")
+                    print(f"{get_elapsed_time(start_time)}s [Segment 9] \
+CBF Created out of {len(dbf_list)} DBFs")
                     # TODO: Create entrypoint to server and send CBF
 
             if not cbf_sent:
